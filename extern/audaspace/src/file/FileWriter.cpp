@@ -20,6 +20,21 @@
 #include "IReader.h"
 #include "Exception.h"
 
+#include <string.h>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+extern "C"
+{ 
+	int printf(const char *format, ...); 
+}
+
 AUD_NAMESPACE_BEGIN
 
 std::shared_ptr<IWriter> FileWriter::createWriter(std::string filename,DeviceSpecs specs, Container format, Codec codec, unsigned int bitrate)
@@ -35,6 +50,42 @@ void FileWriter::writeReader(std::shared_ptr<IReader> reader, std::shared_ptr<IW
 	int len;
 	bool eos = false;
 	int channels = writer->getSpecs().channels;
+
+
+
+	//branch mixdown-communication ------------------------------------------------------------------------------------------------------------
+	/* socket communication setup BEGIN*/
+	int s = socket(AF_INET, SOCK_DGRAM, 0);
+	int enable = 1;
+	setsockopt(s, SOL_SOCKET, (SO_REUSEPORT | SO_REUSEADDR), (char*)&enable, sizeof(int));
+	if (s < 0) {
+		std::cout << "Creating Socket Status: FAILED" << std::endl;
+	} else {
+		std::cout << "Creating Socket Status: SUCCESS" << std::endl;
+	}
+	struct sockaddr_in address;
+	short int port = 1609; //1609 //if 0, will use any available socket.
+	memset((char *)&address, 0, sizeof(address));
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);//htonl(INADDR_ANY);
+	address.sin_port = htons(port);
+	/* socket communication setup END*/
+
+	// bind socket to port
+	/*int bind_status = bind(s, (struct sockaddr *)&address, sizeof(address));
+	if(bind_status < 0) {
+		std::cout << "Bind Socket Status: FAILED " << bind_status << std::endl;
+	} else {
+		std::cout << "Bind Socket Status: SUCCESS" << std::endl;
+	}*/
+
+	// get pid as string for packet.
+	pid_t pid = getpid();
+	std::string proccess_pid = std::to_string( pid );
+	//branch mixdown-communication ------------------------------------------------------------------------------------------------------------
+
+
+
 
 	for(unsigned int pos = 0; ((pos < length) || (length <= 0)) && !eos; pos += len)
 	{
@@ -54,6 +105,34 @@ void FileWriter::writeReader(std::shared_ptr<IReader> reader, std::shared_ptr<IW
 
 		writer->write(len, buf);
 
+
+
+
+		//branch mixdown-communication ------------------------------------------------------------------------------------------------------------
+		//print mixdown progress to terminal
+		//printf ("MIXDOWN: pos[%d], total[%d]\n", pos + 1, length);
+		
+		/* socket send message BEGIN */
+		//std::string kek = std::to_string(pos) + "." + std::to_string(length) + "." + proccess_pid;
+		std::string kek = std::string("{") + 
+			"\"position\":" + std::to_string(pos) +
+			", \"length\":" + std::to_string(length) + 
+			", \"pid\":"    + proccess_pid + 
+			"}";
+		char message[1024];
+		strcpy(message, kek.c_str());
+		//std::cout << "Position: " << std::to_string(pos) << ", Length: " << std::to_string(length) << ", PID: " << proccess_pid << std::endl;
+		if (sendto(s, message, strlen(message), 0, (struct sockaddr *)&address, sizeof(address)) < 0) {
+			//std::cout << "Send Message Status: FAILED" << std::endl;
+		} else {
+			//std::cout << "Send Message Status: SUCCESS" << std::endl;
+		}
+		/* socket send message END */
+		//branch mixdown-communication ------------------------------------------------------------------------------------------------------------
+
+
+
+
 		if(callback)
 		{
 			float progress = -1;
@@ -62,6 +141,11 @@ void FileWriter::writeReader(std::shared_ptr<IReader> reader, std::shared_ptr<IW
 			callback(progress, data);
 		}
 	}
+
+	//branch mixdown-communication ------------------------------------------------------------------------------------------------------------
+	//close socket
+	close(s);
+	//branch mixdown-communication ------------------------------------------------------------------------------------------------------------
 }
 
 void FileWriter::writeReader(std::shared_ptr<IReader> reader, std::vector<std::shared_ptr<IWriter> >& writers, unsigned int length, unsigned int buffersize, void(*callback)(float, void*), void* data)

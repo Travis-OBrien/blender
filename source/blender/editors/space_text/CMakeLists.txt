@@ -40,6 +40,7 @@ set(SRC
   text_format_pov.c
   text_format_pov_ini.c
   text_format_py.c
+  text_format_hy.c
   text_header.c
   text_ops.c
   text_undo.c

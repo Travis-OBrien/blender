@@ -841,11 +841,23 @@ bool BKE_fcurve_calc_range(
  */
 void BKE_fcurve_active_keyframe_set(FCurve *fcu, const BezTriple *active_bezt)
 {
+  if (active_bezt == NULL) {
+    fcu->active_keyframe_index = FCURVE_ACTIVE_KEYFRAME_NONE;
+    return;
+  }
+
+  /* Gracefully handle out-of-bounds pointers. Ideally this would do a BLI_assert() as well, but
+   * then the unit tests would break in debug mode. */
+  ptrdiff_t offset = active_bezt - fcu->bezt;
+  if (offset < 0 || offset >= fcu->totvert) {
+    fcu->active_keyframe_index = FCURVE_ACTIVE_KEYFRAME_NONE;
+    return;
+  }
+
   /* The active keyframe should always be selected. */
-  BLI_assert((active_bezt == NULL) ||
-             ((active_bezt->f1 | active_bezt->f2 | active_bezt->f3) & SELECT));
-  fcu->active_keyframe_index = (active_bezt == NULL) ? FCURVE_ACTIVE_KEYFRAME_NONE :
-                                                       active_bezt - fcu->bezt;
+  BLI_assert(BEZT_ISSEL_ANY(active_bezt) || !"active keyframe must be selected");
+
+  fcu->active_keyframe_index = (int)offset;
 }
 
 /**
@@ -1064,6 +1076,84 @@ void fcurve_store_samples(FCurve *fcu, void *data, int start, int end, FcuSample
   fcu->totvert = end - start + 1;
 }
 
+static void init_unbaked_bezt_data(BezTriple *bezt)
+{
+  bezt->f1 = bezt->f2 = bezt->f3 = SELECT;
+  /* Baked FCurve points always use linear interpolation. */
+  bezt->ipo = BEZT_IPO_LIN;
+  bezt->h1 = bezt->h2 = HD_AUTO_ANIM;
+}
+
+/* Convert baked/sampled fcurves into bezt/regular fcurves. */
+void fcurve_samples_to_keyframes(FCurve *fcu, const int start, const int end)
+{
+
+  /* Sanity checks. */
+  /* TODO: make these tests report errors using reports not CLOG's (Joshua Leung 2009). */
+  if (fcu == NULL) {
+    CLOG_ERROR(&LOG, "No F-Curve with F-Curve Modifiers to Un-Bake");
+    return;
+  }
+
+  if (start > end) {
+    CLOG_ERROR(&LOG, "Error: Frame range to unbake F-Curve is inappropriate");
+    return;
+  }
+
+  if (fcu->fpt == NULL) {
+    /* No data to unbake. */
+    CLOG_ERROR(&LOG, "Error: Curve containts no baked keyframes");
+    return;
+  }
+
+  /* Free any existing sample/keyframe data on the curve. */
+  if (fcu->bezt) {
+    MEM_freeN(fcu->bezt);
+  }
+
+  BezTriple *bezt;
+  FPoint *fpt = fcu->fpt;
+  int keyframes_to_insert = end - start;
+  int sample_points = fcu->totvert;
+
+  bezt = fcu->bezt = MEM_callocN(sizeof(*fcu->bezt) * (size_t)keyframes_to_insert, __func__);
+  fcu->totvert = keyframes_to_insert;
+
+  /* Get first sample point to 'copy' as keyframe. */
+  for (; sample_points && (fpt->vec[0] < start); fpt++, sample_points--) {
+    /* pass */
+  }
+
+  /* Current position in the timeline. */
+  int cur_pos = start;
+
+  /* Add leading dummy flat points if needed. */
+  for (; keyframes_to_insert && (fpt->vec[0] > start); cur_pos++, bezt++, keyframes_to_insert--) {
+    init_unbaked_bezt_data(bezt);
+    bezt->vec[1][0] = (float)cur_pos;
+    bezt->vec[1][1] = fpt->vec[1];
+  }
+
+  /* Copy actual sample points. */
+  for (; keyframes_to_insert && sample_points;
+       cur_pos++, bezt++, keyframes_to_insert--, fpt++, sample_points--) {
+    init_unbaked_bezt_data(bezt);
+    copy_v2_v2(bezt->vec[1], fpt->vec);
+  }
+
+  /* Add trailing dummy flat points if needed. */
+  for (fpt--; keyframes_to_insert; cur_pos++, bezt++, keyframes_to_insert--) {
+    init_unbaked_bezt_data(bezt);
+    bezt->vec[1][0] = (float)cur_pos;
+    bezt->vec[1][1] = fpt->vec[1];
+  }
+
+  MEM_SAFE_FREE(fcu->fpt);
+
+  /* Not strictly needed since we use linear interpolation, but better be consistent here. */
+  calchandles_fcurve(fcu);
+}
+
 /* ***************************** F-Curve Sanity ********************************* */
 /* The functions here are used in various parts of Blender, usually after some editing
  * of keyframe data has occurred. They ensure that keyframe data is properly ordered and
@@ -1182,7 +1272,7 @@ void calchandles_fcurve_ex(FCurve *fcu, eBezTriple_Flag handle_sel_flag)
     /* For automatic ease in and out. */
     if (BEZT_IS_AUTOH(bezt) && !cycle) {
       /* Only do this on first or last beztriple. */
-      if ((a == 0) || (a == fcu->totvert - 1)) {
+      if (ELEM(a, 0, fcu->totvert - 1)) {
         /* Set both handles to have same horizontal value as keyframe. */
         if (fcu->extend == FCURVE_EXTRAPOLATE_CONSTANT) {
           bezt->vec[0][1] = bezt->vec[2][1] = bezt->vec[1][1];

@@ -169,7 +169,7 @@ static int mask_flood_fill_exec(bContext *C, wmOperator *op)
 
   BKE_pbvh_search_gather(pbvh, NULL, NULL, &nodes, &totnode);
 
-  SCULPT_undo_push_begin("Mask flood fill");
+  SCULPT_undo_push_begin(ob, "Mask flood fill");
 
   MaskTaskData data = {
       .ob = ob,
@@ -335,7 +335,7 @@ static void sculpt_gesture_operator_properties(wmOperatorType *ot)
                   false,
                   "Limit to Segment",
                   "Apply the gesture action only to the area that is contained within the "
-                  "segement without extending its effect to the entire line");
+                  "segment without extending its effect to the entire line");
 }
 
 static void sculpt_gesture_context_init_common(bContext *C,
@@ -531,7 +531,7 @@ static SculptGestureContext *sculpt_gesture_init_from_line(bContext *C, wmOperat
       sgcontext, line_points, plane_points, offset_plane_points);
 
   /* Calculate line plane and normal. */
-  const bool flip = sgcontext->line.flip ^ !sgcontext->vc.rv3d->is_persp;
+  const bool flip = sgcontext->line.flip ^ (!sgcontext->vc.rv3d->is_persp);
   sculpt_gesture_line_plane_from_tri(sgcontext->line.true_plane,
                                      sgcontext,
                                      flip,
@@ -707,7 +707,7 @@ static bool sculpt_gesture_is_vertex_effected(SculptGestureContext *sgcontext, P
 static void sculpt_gesture_apply(bContext *C, SculptGestureContext *sgcontext)
 {
   SculptGestureOperation *operation = sgcontext->operation;
-  SCULPT_undo_push_begin("Sculpt Gesture Apply");
+  SCULPT_undo_push_begin(CTX_data_active_object(C), "Sculpt Gesture Apply");
 
   operation->sculpt_gesture_begin(C, sgcontext);
 

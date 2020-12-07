@@ -528,7 +528,7 @@ static bool lib_override_library_create_do(Main *bmain, ID *id_root)
   }
 
   /* Now tag all non-object/collection IDs 'in-between' two tagged ones, as those are part of an
-   * override chain and therefore alos need to be overridden.
+   * override chain and therefore also need to be overridden.
    * One very common cases are e.g. drivers on geometry or materials of an overridden object, that
    * are using another overridden object as parameter. */
   /* Note that this call will also free the main relations data we created above. */
@@ -550,6 +550,10 @@ static void lib_override_library_create_post_process(
       Collection *collection_new = ((Collection *)id_root->newid);
       if (ob_reference != NULL) {
         BKE_collection_add_from_object(bmain, scene, ob_reference, collection_new);
+      }
+      else if (id_reference != NULL) {
+        BKE_collection_add_from_collection(
+            bmain, scene, ((Collection *)id_reference), collection_new);
       }
       else {
         BKE_collection_add_from_collection(bmain, scene, ((Collection *)id_root), collection_new);
@@ -841,6 +845,10 @@ bool BKE_lib_override_library_resync(Main *bmain, Scene *scene, ViewLayer *view_
   id_root = id_root_reference->newid;
 
   /* Essentially ensures that potentially new overrides of new objects will be instantiated. */
+  /* Note: Here 'reference' collection and 'newly added' collection are the same, which is fine
+   * since we already relinked old root override collection to new resync'ed one above. So this
+   * call is not expected to instantiate this new resync'ed collection anywhere, just to ensure
+   * that we do not have any stray objects. */
   lib_override_library_create_post_process(bmain, scene, view_layer, id_root_reference, id_root);
 
   /* Cleanup. */
@@ -1714,7 +1722,7 @@ void BKE_lib_override_library_update(Main *bmain, ID *local)
 
   /* XXX We need a way to get off-Main copies of IDs (similar to localized mats/texts/ etc.)!
    *     However, this is whole bunch of code work in itself, so for now plain stupid ID copy
-   *     will do, as innefficient as it is. :/
+   *     will do, as inefficient as it is. :/
    *     Actually, maybe not! Since we are swapping with original ID's local content, we want to
    *     keep user-count in correct state when freeing tmp_id
    *     (and that user-counts of IDs used by 'new' local data also remain correct). */
@@ -1770,8 +1778,8 @@ void BKE_lib_override_library_update(Main *bmain, ID *local)
     tmp_key->from = tmp_id;
   }
 
-  /* Again, horribly innefficient in our case, we need something off-Main (aka more generic nolib
-   * copy/free stuff)! */
+  /* Again, horribly inefficient in our case, we need something off-Main
+   * (aka more generic nolib copy/free stuff)! */
   BKE_id_free_ex(bmain, tmp_id, LIB_ID_FREE_NO_UI_USER, true);
 
   if (GS(local->name) == ID_AR) {
@@ -1801,7 +1809,7 @@ void BKE_lib_override_library_update(Main *bmain, ID *local)
   /* Full rebuild of Depsgraph! */
   /* Note: this is really brute force, in theory updates from RNA should have handled this already,
    * but for now let's play it safe. */
-  DEG_id_tag_update_ex(bmain, local, ID_RECALC_ALL);
+  DEG_id_tag_update_ex(bmain, local, ID_RECALC_COPY_ON_WRITE);
   DEG_relations_tag_update(bmain);
 }
 
@@ -1817,7 +1825,7 @@ void BKE_lib_override_library_main_update(Main *bmain)
   G_MAIN = bmain;
 
   FOREACH_MAIN_ID_BEGIN (bmain, id) {
-    if (id->override_library != NULL && id->lib == NULL) {
+    if (id->override_library != NULL) {
       BKE_lib_override_library_update(bmain, id);
     }
   }

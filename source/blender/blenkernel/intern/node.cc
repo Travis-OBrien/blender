@@ -372,7 +372,8 @@ static ID *node_owner_get(Main *bmain, ID *id)
   if ((id->flag & LIB_EMBEDDED_DATA) == 0) {
     return id;
   }
-  BLI_assert((id->tag & LIB_TAG_NO_MAIN) == 0);
+  /* TODO: Sort this NO_MAIN or not for embedded node trees. See T86119. */
+  // BLI_assert((id->tag & LIB_TAG_NO_MAIN) == 0);
 
   ListBase *lists[] = {&bmain->materials,
                        &bmain->lights,
@@ -539,18 +540,11 @@ void ntreeBlendWrite(BlendWriter *writer, bNodeTree *ntree)
       }
       else if ((ntree->type == NTREE_COMPOSIT) && (node->type == CMP_NODE_CRYPTOMATTE)) {
         NodeCryptomatte *nc = (NodeCryptomatte *)node->storage;
-        /* Update the matte_id so the files can be opened in versions that don't
-         * use `CryptomatteEntry`. */
-        MEM_SAFE_FREE(nc->matte_id);
-        nc->matte_id = BKE_cryptomatte_entries_to_matte_id(nc);
-        if (nc->matte_id) {
-          BLO_write_string(writer, nc->matte_id);
-        }
+        BLO_write_string(writer, nc->matte_id);
         LISTBASE_FOREACH (CryptomatteEntry *, entry, &nc->entries) {
           BLO_write_struct(writer, CryptomatteEntry, entry);
         }
         BLO_write_struct_by_name(writer, node->typeinfo->storagename, node->storage);
-        MEM_SAFE_FREE(nc->matte_id);
       }
       else if (node->type == FN_NODE_INPUT_STRING) {
         NodeInputString *storage = (NodeInputString *)node->storage;
@@ -3554,7 +3548,8 @@ void nodeSetActive(bNodeTree *ntree, bNode *node)
         tnode->flag &= ~NODE_ACTIVE_ID;
       }
     }
-    if (node->typeinfo->nclass == NODE_CLASS_TEXTURE) {
+    if ((node->typeinfo->nclass == NODE_CLASS_TEXTURE) ||
+        (node->typeinfo->type == GEO_NODE_ATTRIBUTE_SAMPLE_TEXTURE)) {
       tnode->flag &= ~NODE_ACTIVE_TEXTURE;
     }
   }
@@ -3563,7 +3558,8 @@ void nodeSetActive(bNodeTree *ntree, bNode *node)
   if (node->id) {
     node->flag |= NODE_ACTIVE_ID;
   }
-  if (node->typeinfo->nclass == NODE_CLASS_TEXTURE) {
+  if ((node->typeinfo->nclass == NODE_CLASS_TEXTURE) ||
+      (node->typeinfo->type == GEO_NODE_ATTRIBUTE_SAMPLE_TEXTURE)) {
     node->flag |= NODE_ACTIVE_TEXTURE;
   }
 }
@@ -4479,18 +4475,18 @@ void node_type_group_update(struct bNodeType *ntype,
 }
 
 void node_type_exec(struct bNodeType *ntype,
-                    NodeInitExecFunction initexecfunc,
-                    NodeFreeExecFunction freeexecfunc,
-                    NodeExecFunction execfunc)
+                    NodeInitExecFunction init_exec_fn,
+                    NodeFreeExecFunction free_exec_fn,
+                    NodeExecFunction exec_fn)
 {
-  ntype->initexecfunc = initexecfunc;
-  ntype->freeexecfunc = freeexecfunc;
-  ntype->execfunc = execfunc;
+  ntype->init_exec_fn = init_exec_fn;
+  ntype->free_exec_fn = free_exec_fn;
+  ntype->exec_fn = exec_fn;
 }
 
-void node_type_gpu(struct bNodeType *ntype, NodeGPUExecFunction gpufunc)
+void node_type_gpu(struct bNodeType *ntype, NodeGPUExecFunction gpu_fn)
 {
-  ntype->gpufunc = gpufunc;
+  ntype->gpu_fn = gpu_fn;
 }
 
 void node_type_internal_links(bNodeType *ntype,
@@ -4799,6 +4795,7 @@ static void registerGeometryNodes()
   register_node_type_geo_attribute_randomize();
   register_node_type_geo_attribute_separate_xyz();
   register_node_type_geo_attribute_vector_math();
+  register_node_type_geo_attribute_remove();
   register_node_type_geo_boolean();
   register_node_type_geo_collection_info();
   register_node_type_geo_edge_split();
@@ -4813,8 +4810,8 @@ static void registerGeometryNodes()
   register_node_type_geo_point_translate();
   register_node_type_geo_points_to_volume();
   register_node_type_geo_sample_texture();
-  register_node_type_geo_subdivision_surface();
-  register_node_type_geo_subdivision_surface_simple();
+  register_node_type_geo_subdivide_smooth();
+  register_node_type_geo_subdivide();
   register_node_type_geo_transform();
   register_node_type_geo_triangulate();
   register_node_type_geo_volume_to_mesh();

@@ -33,8 +33,11 @@
 #include "COM_NodeOperation.h"
 #include <vector>
 
+namespace blender::compositor {
+
 class ExecutionSystem;
 class MemoryProxy;
+class MemoryBuffer;
 class ReadBufferOperation;
 class Device;
 
@@ -424,7 +427,7 @@ class ExecutionGroup {
    * \brief get the Render priority of this ExecutionGroup
    * \see ExecutionSystem.execute
    */
-  CompositorPriority getRenderPriotrity();
+  CompositorPriority getRenderPriority();
 
   /**
    * \brief set border for viewer operation
@@ -441,3 +444,5 @@ class ExecutionGroup {
   MEM_CXX_CLASS_ALLOC_FUNCS("COM:ExecutionGroup")
 #endif
 };
+
+}  // namespace blender::compositor

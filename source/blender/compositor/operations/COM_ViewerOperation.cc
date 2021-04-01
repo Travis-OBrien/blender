@@ -55,6 +55,8 @@ ViewerOperation::ViewerOperation()
   this->m_depthInput = nullptr;
   this->m_rd = nullptr;
   this->m_viewName = nullptr;
+  flags.use_viewer_border = true;
+  flags.is_viewer_operation = true;
 }
 
 void ViewerOperation::initExecution()

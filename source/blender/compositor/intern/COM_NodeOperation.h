@@ -165,6 +165,83 @@ class NodeOperationOutput {
 #endif
 };
 
+struct NodeOperationFlags {
+  /**
+   * Is this an complex operation.
+   *
+   * The input and output buffers of Complex operations are stored in buffers. It allows
+   * sequential and read/write.
+   *
+   * Complex operations are typically doing many reads to calculate the output of a single pixel.
+   * Mostly Filter types (Blurs, Convolution, Defocus etc) need this to be set to true.
+   */
+  bool complex : 1;
+
+  /**
+   * Does this operation support OpenCL.
+   */
+  bool open_cl : 1;
+
+  bool single_threaded : 1;
+
+  /**
+   * Does the operation needs a viewer border.
+   * Basically, setting border need to happen for only operations
+   * which operates in render resolution buffers (like compositor
+   * output nodes).
+   *
+   * In this cases adding border will lead to mapping coordinates
+   * from output buffer space to input buffer spaces when executing
+   * operation.
+   *
+   * But nodes like viewer and file output just shall display or
+   * safe the same exact buffer which goes to their input, no need
+   * in any kind of coordinates mapping.
+   */
+  bool use_render_border : 1;
+  bool use_viewer_border : 1;
+
+  /**
+   * Is the resolution of the operation set.
+   */
+  bool is_resolution_set : 1;
+
+  /**
+   * Is this a set operation (value, color, vector).
+   */
+  bool is_set_operation : 1;
+  bool is_write_buffer_operation : 1;
+  bool is_read_buffer_operation : 1;
+  bool is_proxy_operation : 1;
+  bool is_viewer_operation : 1;
+  bool is_preview_operation : 1;
+
+  /**
+   * When set additional data conversion operations are added to
+   * convert the data. SocketProxyOperation don't always need to do data conversions.
+   *
+   * By default data conversions are enabled.
+   */
+  bool use_datatype_conversion : 1;
+
+  NodeOperationFlags()
+  {
+    complex = false;
+    single_threaded = false;
+    open_cl = false;
+    use_render_border = false;
+    use_viewer_border = false;
+    is_resolution_set = false;
+    is_set_operation = false;
+    is_read_buffer_operation = false;
+    is_write_buffer_operation = false;
+    is_proxy_operation = false;
+    is_viewer_operation = false;
+    is_preview_operation = false;
+    use_datatype_conversion = true;
+  }
+};
+
 /**
  * \brief NodeOperation contains calculation logic
  *
@@ -182,20 +259,6 @@ class NodeOperation {
   unsigned int m_resolutionInputSocketIndex;
 
   /**
-   * \brief is this operation a complex one.
-   *
-   * Complex operations are typically doing many reads to calculate the output of a single pixel.
-   * Mostly Filter types (Blurs, Convolution, Defocus etc) need this to be set to true.
-   */
-  bool m_complex;
-
-  /**
-   * \brief can this operation be scheduled on an OpenCL device.
-   * \note Only applicable if complex is True
-   */
-  bool m_openCL;
-
-  /**
    * \brief mutex reference for very special node initializations
    * \note only use when you really know what you are doing.
    * this mutex is used to share data among chunks in the same operation
@@ -211,11 +274,6 @@ class NodeOperation {
    */
   const bNodeTree *m_btree;
 
-  /**
-   * \brief set to truth when resolution for this operation is set
-   */
-  bool m_isResolutionSet;
-
  protected:
   /**
    * Width of the output of this operation.
@@ -227,9 +285,19 @@ class NodeOperation {
    */
   unsigned int m_height;
 
+  /**
+   * Flags how to evaluate this operation.
+   */
+  NodeOperationFlags flags;
+
  public:
   virtual ~NodeOperation()
   {
+  }
+
+  const NodeOperationFlags get_flags() const
+  {
+    return flags;
   }
 
   unsigned int getNumberOfInputSockets() const
@@ -243,14 +311,6 @@ class NodeOperation {
   NodeOperationOutput *getOutputSocket(unsigned int index = 0);
   NodeOperationInput *getInputSocket(unsigned int index);
 
-  /** Check if this is an input operation
-   * An input operation is an operation that only has output sockets and no input sockets
-   */
-  bool isInputOperation() const
-  {
-    return m_inputs.is_empty();
-  }
-
   /**
    * \brief determine the resolution of this node
    * \note this method will not set the resolution, this is the responsibility of the caller
@@ -261,11 +321,11 @@ class NodeOperation {
                                    unsigned int preferredResolution[2]);
 
   /**
-   * \brief isOutputOperation determines whether this operation is an output of the ExecutionSystem
-   * during rendering or editing.
+   * \brief isOutputOperation determines whether this operation is an output of the
+   * ExecutionSystem during rendering or editing.
    *
-   * Default behavior if not overridden, this operation will not be evaluated as being an output of
-   * the ExecutionSystem.
+   * Default behavior if not overridden, this operation will not be evaluated as being an output
+   * of the ExecutionSystem.
    *
    * \see ExecutionSystem
    * \ingroup check
@@ -276,11 +336,6 @@ class NodeOperation {
    * \return bool the result of this method
    */
   virtual bool isOutputOperation(bool /*rendering*/) const
-  {
-    return false;
-  }
-
-  virtual int isSingleThreaded()
   {
     return false;
   }
@@ -347,58 +402,17 @@ class NodeOperation {
   }
   virtual void deinitExecution();
 
-  bool isResolutionSet()
-  {
-    return this->m_isResolutionSet;
-  }
-
   /**
    * \brief set the resolution
    * \param resolution: the resolution to set
    */
   void setResolution(unsigned int resolution[2])
   {
-    if (!isResolutionSet()) {
+    if (!this->flags.is_resolution_set) {
       this->m_width = resolution[0];
       this->m_height = resolution[1];
-      this->m_isResolutionSet = true;
+      this->flags.is_resolution_set = true;
     }
-  }
-
-  /**
-   * \brief is this operation complex
-   *
-   * Complex operations are typically doing many reads to calculate the output of a single pixel.
-   * Mostly Filter types (Blurs, Convolution, Defocus etc) need this to be set to true.
-   */
-  bool isComplex() const
-  {
-    return this->m_complex;
-  }
-
-  virtual bool isSetOperation() const
-  {
-    return false;
-  }
-
-  /**
-   * \brief is this operation of type ReadBufferOperation
-   * \return [true:false]
-   * \see ReadBufferOperation
-   */
-  virtual bool isReadBufferOperation() const
-  {
-    return false;
-  }
-
-  /**
-   * \brief is this operation of type WriteBufferOperation
-   * \return [true:false]
-   * \see WriteBufferOperation
-   */
-  virtual bool isWriteBufferOperation() const
-  {
-    return false;
   }
 
   /**
@@ -418,8 +432,8 @@ class NodeOperation {
                                                 rcti *output);
 
   /**
-   * \brief set the index of the input socket that will determine the resolution of this operation
-   * \param index: the index to set
+   * \brief set the index of the input socket that will determine the resolution of this
+   * operation \param index: the index to set
    */
   void setResolutionInputSocketIndex(unsigned int index);
 
@@ -431,38 +445,6 @@ class NodeOperation {
   virtual CompositorPriority getRenderPriority() const
   {
     return CompositorPriority::Low;
-  }
-
-  /**
-   * \brief can this NodeOperation be scheduled on an OpenCLDevice
-   * \see WorkScheduler.schedule
-   * \see ExecutionGroup.addOperation
-   */
-  bool isOpenCL() const
-  {
-    return this->m_openCL;
-  }
-
-  virtual bool isViewerOperation() const
-  {
-    return false;
-  }
-  virtual bool isPreviewOperation() const
-  {
-    return false;
-  }
-  virtual bool isFileOutputOperation() const
-  {
-    return false;
-  }
-  virtual bool isProxyOperation() const
-  {
-    return false;
-  }
-
-  virtual bool useDatatypeConversion() const
-  {
-    return true;
   }
 
   inline bool isBraked() const
@@ -534,12 +516,12 @@ class NodeOperation {
   void setWidth(unsigned int width)
   {
     this->m_width = width;
-    this->m_isResolutionSet = true;
+    this->flags.is_resolution_set = true;
   }
   void setHeight(unsigned int height)
   {
     this->m_height = height;
-    this->m_isResolutionSet = true;
+    this->flags.is_resolution_set = true;
   }
   SocketReader *getInputSocketReader(unsigned int inputSocketindex);
   NodeOperation *getInputOperation(unsigned int inputSocketindex);
@@ -557,15 +539,7 @@ class NodeOperation {
    */
   void setComplex(bool complex)
   {
-    this->m_complex = complex;
-  }
-
-  /**
-   * \brief set if this NodeOperation can be scheduled on a OpenCLDevice
-   */
-  void setOpenCL(bool openCL)
-  {
-    this->m_openCL = openCL;
+    this->flags.complex = complex;
   }
 
   /**

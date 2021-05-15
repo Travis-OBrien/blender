@@ -14,6 +14,8 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
+#pragma once
+
 #include "BLI_array.hh"
 #include "BLI_color.hh"
 #include "BLI_float2.hh"
@@ -225,8 +227,10 @@ template<typename T> class SimpleMixer {
   }
 };
 
-/** This mixer accumulates values in a type that is different from the one that is mixed. Some
- * types cannot encode the floating point weights in their values (e.g. int and bool). */
+/**
+ * This mixer accumulates values in a type that is different from the one that is mixed.
+ * Some types cannot encode the floating point weights in their values (e.g. int and bool).
+ */
 template<typename T, typename AccumulationT, T (*ConvertToT)(const AccumulationT &value)>
 class SimpleMixerWithAccumulationType {
  private:

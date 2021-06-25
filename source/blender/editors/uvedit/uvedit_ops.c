@@ -624,7 +624,7 @@ static void uv_weld_align(bContext *C, eUVWeldAlign tool)
           }
         }
         else {
-          /* error - not a line, needs 3+ points  */
+          /* error - not a line, needs 3+ points. */
         }
 
         if (eve_line) {
@@ -632,7 +632,7 @@ static void uv_weld_align(bContext *C, eUVWeldAlign tool)
         }
       }
       else {
-        /* error - cant find an endpoint */
+        /* error - can't find an endpoint. */
       }
     }
 
@@ -1194,8 +1194,8 @@ static bool uv_snap_uvs_to_adjacent_unselected(Scene *scene, Object *obedit)
           int uv_tot = 0;
 
           BM_ITER_ELEM (lsub, &lsubiter, l->v, BM_LOOPS_OF_VERT) {
-            if (BM_elem_flag_test(lsub->f, BM_ELEM_TAG) && /* face: visible */
-                !BM_elem_flag_test(lsub, BM_ELEM_TAG))     /* loop: unselected  */
+            if (BM_elem_flag_test(lsub->f, BM_ELEM_TAG) && /* face: visible. */
+                !BM_elem_flag_test(lsub, BM_ELEM_TAG))     /* loop: unselected. */
             {
               luv = BM_ELEM_CD_GET_VOID_P(lsub, cd_loop_uv_offset);
               add_v2_v2(uv, luv->uv);
@@ -1469,9 +1469,14 @@ static int uv_hide_exec(bContext *C, wmOperator *op)
 
     if (ts->uv_flag & UV_SYNC_SELECTION) {
       if (EDBM_mesh_hide(em, swap)) {
-        EDBM_update_generic(ob->data, true, false);
+        EDBM_update(ob->data,
+                    &(const struct EDBMUpdate_Params){
+                        .calc_looptri = true,
+                        .calc_normals = false,
+                        .is_destructive = false,
+                    });
       }
-      return OPERATOR_FINISHED;
+      continue;
     }
 
     BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
@@ -1607,9 +1612,14 @@ static int uv_reveal_exec(bContext *C, wmOperator *op)
     /* call the mesh function if we are in mesh sync sel */
     if (ts->uv_flag & UV_SYNC_SELECTION) {
       if (EDBM_mesh_reveal(em, select)) {
-        EDBM_update_generic(ob->data, true, false);
+        EDBM_update(ob->data,
+                    &(const struct EDBMUpdate_Params){
+                        .calc_looptri = true,
+                        .calc_normals = false,
+                        .is_destructive = false,
+                    });
       }
-      return OPERATOR_FINISHED;
+      continue;
     }
     if (use_face_center) {
       if (em->selectmode == SCE_SELECT_FACE) {

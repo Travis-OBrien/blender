@@ -1561,7 +1561,7 @@ static void ui_drag_toggle_set(bContext *C, uiDragToggleHandle *drag_info, const
         };
 
         /* check if this is a different button,
-         * chances are high the button wont move about :) */
+         * chances are high the button won't move about :) */
         if (len_manhattan_v2v2(drag_info->but_cent_start, but_cent_new) > 1.0f) {
           if (fabsf(drag_info->but_cent_start[0] - but_cent_new[0]) <
               fabsf(drag_info->but_cent_start[1] - but_cent_new[1])) {
@@ -1939,7 +1939,7 @@ static bool ui_but_drag_init(bContext *C,
       uiDragToggleHandle *drag_info = MEM_callocN(sizeof(*drag_info), __func__);
       ARegion *region_prev;
 
-      /* call here because regular mouse-up event wont run,
+      /* call here because regular mouse-up event won't run,
        * typically 'button_activate_exit()' handles this */
       ui_apply_but_autokey(C, but);
 
@@ -2346,16 +2346,16 @@ static int get_but_property_array_length(uiBut *but)
 }
 
 static void ui_but_set_float_array(
-    bContext *C, uiBut *but, uiHandleButtonData *data, float *values, int array_length)
+    bContext *C, uiBut *but, uiHandleButtonData *data, const float *values, const int values_len)
 {
   button_activate_state(C, but, BUTTON_STATE_NUM_EDITING);
 
-  for (int i = 0; i < array_length; i++) {
+  for (int i = 0; i < values_len; i++) {
     RNA_property_float_set_index(&but->rnapoin, but->rnaprop, i, values[i]);
   }
   if (data) {
     if (but->type == UI_BTYPE_UNITVEC) {
-      BLI_assert(array_length == 3);
+      BLI_assert(values_len == 3);
       copy_v3_v3(data->vec, values);
     }
     else {
@@ -2366,56 +2366,39 @@ static void ui_but_set_float_array(
   button_activate_state(C, but, BUTTON_STATE_EXIT);
 }
 
-static void float_array_to_string(float *values,
-                                  int array_length,
+static void float_array_to_string(const float *values,
+                                  const int values_len,
                                   char *output,
                                   int output_len_max)
 {
-  /* to avoid buffer overflow attacks; numbers are quite arbitrary */
-  BLI_assert(output_len_max > 15);
-  output_len_max -= 10;
-
-  int current_index = 0;
-  output[current_index] = '[';
-  current_index++;
-
-  for (int i = 0; i < array_length; i++) {
-    int length = BLI_snprintf(
-        output + current_index, output_len_max - current_index, "%f", values[i]);
-    current_index += length;
-
-    if (i < array_length - 1) {
-      if (current_index < output_len_max) {
-        output[current_index + 0] = ',';
-        output[current_index + 1] = ' ';
-        current_index += 2;
-      }
-    }
+  const int values_end = values_len - 1;
+  int ofs = 0;
+  output[ofs++] = '[';
+  for (int i = 0; i < values_len; i++) {
+    ofs += BLI_snprintf_rlen(
+        output + ofs, output_len_max - ofs, (i != values_end) ? "%f, " : "%f]", values[i]);
   }
-
-  output[current_index + 0] = ']';
-  output[current_index + 1] = '\0';
 }
 
 static void ui_but_copy_numeric_array(uiBut *but, char *output, int output_len_max)
 {
-  const int array_length = get_but_property_array_length(but);
-  float *values = alloca(array_length * sizeof(float));
+  const int values_len = get_but_property_array_length(but);
+  float *values = alloca(values_len * sizeof(float));
   RNA_property_float_get_array(&but->rnapoin, but->rnaprop, values);
-  float_array_to_string(values, array_length, output, output_len_max);
+  float_array_to_string(values, values_len, output, output_len_max);
 }
 
-static bool parse_float_array(char *text, float *values, int expected_length)
+static bool parse_float_array(char *text, float *values, int values_len_expected)
 {
   /* can parse max 4 floats for now */
-  BLI_assert(0 <= expected_length && expected_length <= 4);
+  BLI_assert(0 <= values_len_expected && values_len_expected <= 4);
 
   float v[5];
-  const int actual_length = sscanf(
+  const int values_len_actual = sscanf(
       text, "[%f, %f, %f, %f, %f]", &v[0], &v[1], &v[2], &v[3], &v[4]);
 
-  if (actual_length == expected_length) {
-    memcpy(values, v, sizeof(float) * expected_length);
+  if (values_len_actual == values_len_expected) {
+    memcpy(values, v, sizeof(float) * values_len_expected);
     return true;
   }
   return false;
@@ -2426,16 +2409,16 @@ static void ui_but_paste_numeric_array(bContext *C,
                                        uiHandleButtonData *data,
                                        char *buf_paste)
 {
-  const int array_length = get_but_property_array_length(but);
-  if (array_length > 4) {
+  const int values_len = get_but_property_array_length(but);
+  if (values_len > 4) {
     /* not supported for now */
     return;
   }
 
-  float *values = alloca(sizeof(float) * array_length);
+  float *values = alloca(sizeof(float) * values_len);
 
-  if (parse_float_array(buf_paste, values, array_length)) {
-    ui_but_set_float_array(C, but, data, values, array_length);
+  if (parse_float_array(buf_paste, values, values_len)) {
+    ui_but_set_float_array(C, but, data, values, values_len);
   }
   else {
     WM_report(RPT_ERROR, "Expected an array of numbers: [n, n, ...]");
@@ -3085,7 +3068,7 @@ static bool ui_textedit_insert_buf(uiBut *but,
 
     if ((len + step >= data->maxlen) && (data->maxlen - (len + 1) > 0)) {
       if (UI_but_is_utf8(but)) {
-        /* shorten 'step' to a utf8 aligned size that fits  */
+        /* Shorten 'step' to a utf8 aligned size that fits. */
         BLI_strnlen_utf8_ex(buf, data->maxlen - (len + 1), &step);
       }
       else {
@@ -3431,7 +3414,7 @@ static void ui_textedit_end(bContext *C, uiBut *but, uiHandleButtonData *data)
       const int strip = BLI_utf8_invalid_strip(but->editstr, strlen(but->editstr));
       /* not a file?, strip non utf-8 chars */
       if (strip) {
-        /* wont happen often so isn't that annoying to keep it here for a while */
+        /* won't happen often so isn't that annoying to keep it here for a while */
         printf("%s: invalid utf8 - stripped chars %d\n", __func__, strip);
       }
     }
@@ -3923,7 +3906,6 @@ static void ui_numedit_begin_set_values(uiBut *but, uiHandleButtonData *data)
   data->startvalue = ui_but_value_get(but);
   data->origvalue = data->startvalue;
   data->value = data->origvalue;
-  but->editval = &data->value;
 }
 
 static void ui_numedit_begin(uiBut *but, uiHandleButtonData *data)
@@ -3952,6 +3934,7 @@ static void ui_numedit_begin(uiBut *but, uiHandleButtonData *data)
   }
   else {
     ui_numedit_begin_set_values(but, data);
+    but->editval = &data->value;
 
     float softmin = but->softmin;
     float softmax = but->softmax;
@@ -9679,7 +9662,7 @@ static void ui_region_auto_open_clear(ARegion *region)
  * This allows a menu to be open,
  * but send key events to the parent if there's no active buttons.
  *
- * Without this keyboard navigation from menu's wont work.
+ * Without this keyboard navigation from menus won't work.
  */
 static bool ui_menu_pass_event_to_parent_if_nonactive(uiPopupBlockHandle *menu,
                                                       const uiBut *but,

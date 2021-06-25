@@ -238,7 +238,7 @@ in vec4 pos;  /* Prev adj vert */
 in vec4 pos1; /* Current edge */
 in vec4 pos2; /* Current edge */
 in vec4 pos3; /* Next adj vert */
-/* xy is UV for fills, z is U of stroke, w is strength.  */
+/* xy is UV for fills, z is U of stroke, w is strength. */
 in vec4 uv1;
 in vec4 uv2;
 in vec4 col1;
@@ -442,6 +442,10 @@ void stroke_vertex()
   if (is_dot) {
 #  ifdef GP_MATERIAL_BUFFER_LEN
     int alignement = GP_FLAG(m) & GP_STROKE_ALIGNMENT;
+    /* For one point strokes use object aligment. */
+    if (ma.x == -1 && ma2.x == -1 && alignement == GP_STROKE_ALIGNMENT_STROKE) {
+      alignement = GP_STROKE_ALIGNMENT_OBJECT;
+    }
 #  endif
 
     vec2 x_axis;

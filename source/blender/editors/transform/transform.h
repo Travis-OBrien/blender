@@ -46,6 +46,7 @@
  * \{ */
 
 struct ARegion;
+struct BMPartialUpdate;
 struct Depsgraph;
 struct NumInput;
 struct Object;
@@ -148,15 +149,18 @@ typedef enum {
   T_AUTOMERGE = 1 << 20,
   /** Runs auto-merge & splits. */
   T_AUTOSPLIT = 1 << 21,
+
+  /** No cursor wrapping on region bounds */
+  T_NO_CURSOR_WRAP = 1 << 23,
 } eTFlag;
 
 /** #TransInfo.modifiers */
 typedef enum {
-  MOD_CONSTRAINT_SELECT = 1 << 0,
+  MOD_CONSTRAINT_SELECT_AXIS = 1 << 0,
   MOD_PRECISION = 1 << 1,
   MOD_SNAP = 1 << 2,
   MOD_SNAP_INVERT = 1 << 3,
-  MOD_CONSTRAINT_PLANE = 1 << 4,
+  MOD_CONSTRAINT_SELECT_PLANE = 1 << 4,
 } eTModifier;
 
 /** #TransSnap.status */

@@ -1220,7 +1220,7 @@ void drawEdgeSlide(TransInfo *t)
     immUniformThemeColorShadeAlpha(TH_EDGE_SELECT, 80, alpha_shade);
     immBegin(GPU_PRIM_LINES, sld->totsv * 2);
 
-    /* TODO(campbell): Loop over all verts  */
+    /* TODO(campbell): Loop over all verts. */
     sv = sld->sv;
     for (i = 0; i < sld->totsv; i++, sv++) {
       float a[3], b[3];
@@ -1482,15 +1482,15 @@ static void applyEdgeSlide(TransInfo *t, const int UNUSED(mval[2]))
     ofs += BLI_strncpy_rlen(str + ofs, &c[0], sizeof(str) - ofs);
   }
   else {
-    ofs += BLI_snprintf(str + ofs, sizeof(str) - ofs, "%.4f ", final);
+    ofs += BLI_snprintf_rlen(str + ofs, sizeof(str) - ofs, "%.4f ", final);
   }
-  ofs += BLI_snprintf(
+  ofs += BLI_snprintf_rlen(
       str + ofs, sizeof(str) - ofs, TIP_("(E)ven: %s, "), WM_bool_as_string(use_even));
   if (use_even) {
-    ofs += BLI_snprintf(
+    ofs += BLI_snprintf_rlen(
         str + ofs, sizeof(str) - ofs, TIP_("(F)lipped: %s, "), WM_bool_as_string(flipped));
   }
-  ofs += BLI_snprintf(
+  ofs += BLI_snprintf_rlen(
       str + ofs, sizeof(str) - ofs, TIP_("Alt or (C)lamp: %s"), WM_bool_as_string(is_clamp));
   /* done with header string */
 

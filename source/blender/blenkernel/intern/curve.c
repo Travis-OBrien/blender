@@ -332,16 +332,6 @@ IDTypeInfo IDType_ID_CU = {
     .lib_override_apply_post = NULL,
 };
 
-static int cu_isectLL(const float v1[3],
-                      const float v2[3],
-                      const float v3[3],
-                      const float v4[3],
-                      short cox,
-                      short coy,
-                      float *lambda,
-                      float *mu,
-                      float vec[3]);
-
 /* frees editcurve entirely */
 void BKE_curve_editfont_free(Curve *cu)
 {
@@ -563,18 +553,6 @@ void BKE_curve_texspace_ensure(Curve *cu)
 {
   if ((cu->texflag & CU_AUTOSPACE) && !(cu->texflag & CU_AUTOSPACE_EVALUATED)) {
     BKE_curve_texspace_calc(cu);
-  }
-}
-
-void BKE_curve_texspace_get(Curve *cu, float r_loc[3], float r_size[3])
-{
-  BKE_curve_texspace_ensure(cu);
-
-  if (r_loc) {
-    copy_v3_v3(r_loc, cu->loc);
-  }
-  if (r_size) {
-    copy_v3_v3(r_size, cu->size);
   }
 }
 
@@ -2123,8 +2101,8 @@ static void tilt_bezpart(const BezTriple *prevbezt,
     if (radius_array) {
       if (nu->radius_interp == KEY_CU_EASE) {
         /* Support 2.47 ease interp
-         * Note! - this only takes the 2 points into account,
-         * giving much more localized results to changes in radius, sometimes you want that */
+         * NOTE: this only takes the 2 points into account,
+         * giving much more localized results to changes in radius, sometimes you want that. */
         *radius_array = prevbezt->radius + (bezt->radius - prevbezt->radius) *
                                                (3.0f * fac * fac - 2.0f * fac * fac * fac);
       }
@@ -2490,7 +2468,7 @@ static void make_bevel_list_3D_tangent(BevList *bl)
 
     cross_v3_v3v3(cross_tmp, bevp1->tan, bevp1->dir);
     normalize_v3(cross_tmp);
-    tri_to_quat(bevp1->quat, zero, cross_tmp, bevp1->tan); /* XXX - could be faster */
+    tri_to_quat(bevp1->quat, zero, cross_tmp, bevp1->tan); /* XXX: could be faster. */
 
     /* bevp0 = bevp1; */ /* UNUSED */
     bevp1 = bevp2;
@@ -2559,8 +2537,8 @@ static void make_bevel_list_segment_2D(BevList *bl)
 
 static void make_bevel_list_2D(BevList *bl)
 {
-  /* note: bevp->dir and bevp->quat are not needed for beveling but are
-   * used when making a path from a 2D curve, therefore they need to be set - Campbell */
+  /* NOTE(campbell): `bevp->dir` and `bevp->quat` are not needed for beveling but are
+   * used when making a path from a 2D curve, therefore they need to be set. */
 
   BevPoint *bevp0, *bevp1, *bevp2;
   int nr;
@@ -3658,7 +3636,7 @@ static bool tridiagonal_solve_with_limits(float *a,
  * is affected by all other points of the curve segment, in practice the influence
  * decreases exponentially with distance.
  *
- * Note: this algorithm assumes that the handle horizontal size is always 1/3 of the
+ * NOTE: this algorithm assumes that the handle horizontal size is always 1/3 of the
  * of the interval to the next point. This rule ensures linear interpolation of time.
  *
  * ^ height (co 1)

@@ -163,7 +163,7 @@ class CPPType : NonCopyable, NonMovable {
    * Required memory in bytes for an instance of this type.
    *
    * C++ equivalent:
-   *   sizeof(T);
+   *   `sizeof(T);`
    */
   int64_t size() const
   {
@@ -543,6 +543,13 @@ class CPPType : NonCopyable, NonMovable {
   {
     BLI_assert(this->pointer_can_point_to_instance(value));
     m_.print(value, ss);
+  }
+
+  std::string to_string(const void *value) const
+  {
+    std::stringstream ss;
+    this->print(value, ss);
+    return ss.str();
   }
 
   void print_or_default(const void *value, std::stringstream &ss, StringRef default_value) const

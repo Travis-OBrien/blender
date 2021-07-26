@@ -56,6 +56,7 @@
 #include "BKE_linestyle.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
+#include "BKE_node.h"
 #include "BKE_object.h"
 #include "BKE_report.h"
 #include "BKE_scene.h"
@@ -294,7 +295,7 @@ static int material_slot_assign_exec(bContext *C, wmOperator *UNUSED(op))
     }
     else {
       /* Find the first matching material.
-       * Note: there may be multiple but that's not a common use case. */
+       * NOTE: there may be multiple but that's not a common use case. */
       for (int i = 0; i < ob->totcol; i++) {
         const Material *mat = BKE_object_material_get(ob, i + 1);
         if (mat_active == mat) {
@@ -401,7 +402,7 @@ static int material_slot_de_select(bContext *C, bool select)
     }
     else {
       /* Find the first matching material.
-       * Note: there may be multiple but that's not a common use case. */
+       * NOTE: there may be multiple but that's not a common use case. */
       for (int i = 0; i < ob->totcol; i++) {
         const Material *mat = BKE_object_material_get(ob, i + 1);
         if (mat_active == mat) {
@@ -1043,6 +1044,10 @@ static int view_layer_add_aov_exec(bContext *C, wmOperator *UNUSED(op))
     engine = NULL;
   }
 
+  if (scene->nodetree) {
+    ntreeCompositUpdateRLayers(scene->nodetree);
+  }
+
   DEG_id_tag_update(&scene->id, 0);
   DEG_relations_tag_update(CTX_data_main(C));
   WM_event_add_notifier(C, NC_SCENE | ND_LAYER, scene);
@@ -1089,6 +1094,10 @@ static int view_layer_remove_aov_exec(bContext *C, wmOperator *UNUSED(op))
     }
     RE_engine_free(engine);
     engine = NULL;
+  }
+
+  if (scene->nodetree) {
+    ntreeCompositUpdateRLayers(scene->nodetree);
   }
 
   DEG_id_tag_update(&scene->id, 0);
@@ -1183,7 +1192,7 @@ static int light_cache_bake_exec(bContext *C, wmOperator *op)
 
   G.is_break = false;
 
-  /* TODO abort if selected engine is not eevee. */
+  /* TODO: abort if selected engine is not eevee. */
   void *rj = EEVEE_lightbake_job_data_alloc(bmain, view_layer, scene, false, scene->r.cfra);
 
   light_cache_bake_tag_cache(scene, op);
@@ -2418,7 +2427,7 @@ static void paste_mtex_copybuf(ID *id)
       mtex = &(((FreestyleLineStyle *)id)->mtex[(int)((FreestyleLineStyle *)id)->texact]);
       break;
     default:
-      BLI_assert(!"invalid id type");
+      BLI_assert_msg(0, "invalid id type");
       return;
   }
 

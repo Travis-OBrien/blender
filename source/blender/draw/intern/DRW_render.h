@@ -82,7 +82,7 @@ typedef struct DRWShadingGroup DRWShadingGroup;
 typedef struct DRWUniform DRWUniform;
 typedef struct DRWView DRWView;
 
-/* TODO Put it somewhere else? */
+/* TODO: Put it somewhere else? */
 typedef struct BoundSphere {
   float center[3], radius;
 } BoundSphere;
@@ -91,7 +91,7 @@ typedef struct BoundSphere {
 typedef char DRWViewportEmptyList;
 
 #define DRW_VIEWPORT_LIST_SIZE(list) \
-  (sizeof(list) == sizeof(DRWViewportEmptyList) ? 0 : ((sizeof(list)) / sizeof(void *)))
+  (sizeof(list) == sizeof(DRWViewportEmptyList) ? 0 : (sizeof(list) / sizeof(void *)))
 
 /* Unused members must be either pass list or 'char *' when not used. */
 #define DRW_VIEWPORT_DATA_SIZE(ty) \
@@ -327,7 +327,7 @@ typedef enum {
   /** Culling test */
   DRW_STATE_CULL_BACK = (1 << 7),
   DRW_STATE_CULL_FRONT = (1 << 8),
-  /** Stencil test . These options are mutually exclusive and packed into 2 bits. */
+  /** Stencil test. These options are mutually exclusive and packed into 2 bits. */
   DRW_STATE_STENCIL_ALWAYS = (1 << 9),
   DRW_STATE_STENCIL_EQUAL = (2 << 9),
   DRW_STATE_STENCIL_NEQUAL = (3 << 9),
@@ -490,7 +490,7 @@ void DRW_shgroup_stencil_set(DRWShadingGroup *shgroup,
                              uint write_mask,
                              uint reference,
                              uint compare_mask);
-/* TODO remove this function. Obsolete version. mask is actually reference value. */
+/* TODO: remove this function. Obsolete version. mask is actually reference value. */
 void DRW_shgroup_stencil_mask(DRWShadingGroup *shgroup, uint mask);
 
 /* Issue a clear command. */

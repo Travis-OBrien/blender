@@ -611,7 +611,7 @@ static Entry *ghash_pop(GHash *gh, GHashIterState *state)
     return NULL;
   }
 
-  /* Note: using first_bucket_index here allows us to avoid potential
+  /* NOTE: using first_bucket_index here allows us to avoid potential
    * huge number of loops over buckets,
    * in case we are popping from a large ghash with few items in it... */
   curr_bucket = ghash_find_next_bucket_index(gh, curr_bucket);
@@ -677,7 +677,7 @@ static GHash *ghash_copy(const GHash *gh, GHashKeyCopyFP keycopyfp, GHashValCopy
        * This means entries in buckets in new copy will be in reversed order!
        * This shall not be an issue though, since order should never be assumed in ghash. */
 
-      /* Note: We can use 'i' here, since we are sure that
+      /* NOTE: We can use 'i' here, since we are sure that
        * 'gh' and 'gh_new' have the same number of buckets! */
       e_new->next = gh_new->buckets[i];
       gh_new->buckets[i] = e_new;
@@ -1270,7 +1270,7 @@ void BLI_gset_flag_clear(GSet *gs, uint flag)
 /* -------------------------------------------------------------------- */
 /** \name GSet Combined Key/Value Usage
  *
- * \note Not typical ``set`` use, only use when the pointer identity matters.
+ * \note Not typical `set` use, only use when the pointer identity matters.
  * This can be useful when the key references data stored outside the GSet.
  * \{ */
 

@@ -507,12 +507,11 @@ void GeometrySet::gather_attributes_for_propagation(
             return;
           }
         }
-        if (attribute_id.is_anonymous()) {
-          if (!BKE_anonymous_attribute_id_has_strong_references(&attribute_id.anonymous_id())) {
-            /* Don't propagate anonymous attributes that are not used anymore. */
-            return;
-          }
+
+        if (!attribute_id.should_be_kept()) {
+          return;
         }
+
         auto add_info = [&](AttributeKind *attribute_kind) {
           attribute_kind->domain = meta_data.domain;
           attribute_kind->data_type = meta_data.data_type;
@@ -526,6 +525,40 @@ void GeometrySet::gather_attributes_for_propagation(
         r_attributes.add_or_modify(attribute_id, add_info, modify_info);
       });
   delete dummy_component;
+}
+
+static void gather_component_types_recursive(const GeometrySet &geometry_set,
+                                             const bool include_instances,
+                                             const bool ignore_empty,
+                                             Vector<GeometryComponentType> &r_types)
+{
+  for (const GeometryComponent *component : geometry_set.get_components_for_read()) {
+    if (ignore_empty) {
+      if (component->is_empty()) {
+        continue;
+      }
+    }
+    r_types.append_non_duplicates(component->type());
+  }
+  if (!include_instances) {
+    return;
+  }
+  const InstancesComponent *instances = geometry_set.get_component_for_read<InstancesComponent>();
+  if (instances == nullptr) {
+    return;
+  }
+  instances->foreach_referenced_geometry([&](const GeometrySet &instance_geometry_set) {
+    gather_component_types_recursive(
+        instance_geometry_set, include_instances, ignore_empty, r_types);
+  });
+}
+
+blender::Vector<GeometryComponentType> GeometrySet::gather_component_types(
+    const bool include_instances, bool ignore_empty) const
+{
+  Vector<GeometryComponentType> types;
+  gather_component_types_recursive(*this, include_instances, ignore_empty, types);
+  return types;
 }
 
 static void gather_mutable_geometry_sets(GeometrySet &geometry_set,
@@ -577,24 +610,32 @@ bool BKE_object_has_geometry_set_instances(const Object *ob)
   if (geometry_set == nullptr) {
     return false;
   }
-  if (geometry_set->has_instances()) {
-    return true;
-  }
-  const bool has_mesh = geometry_set->has_mesh();
-  const bool has_pointcloud = geometry_set->has_pointcloud();
-  const bool has_volume = geometry_set->has_volume();
-  const bool has_curve = geometry_set->has_curve();
-  if (ob->type == OB_MESH) {
-    return has_pointcloud || has_volume || has_curve;
-  }
-  if (ob->type == OB_POINTCLOUD) {
-    return has_mesh || has_volume || has_curve;
-  }
-  if (ob->type == OB_VOLUME) {
-    return has_mesh || has_pointcloud || has_curve;
-  }
-  if (ELEM(ob->type, OB_CURVE, OB_FONT)) {
-    return has_mesh || has_pointcloud || has_volume;
+  for (const GeometryComponent *component : geometry_set->get_components_for_read()) {
+    if (component->is_empty()) {
+      continue;
+    }
+    const GeometryComponentType type = component->type();
+    bool is_instance = false;
+    switch (type) {
+      case GEO_COMPONENT_TYPE_MESH:
+        is_instance = ob->type != OB_MESH;
+        break;
+      case GEO_COMPONENT_TYPE_POINT_CLOUD:
+        is_instance = ob->type != OB_POINTCLOUD;
+        break;
+      case GEO_COMPONENT_TYPE_INSTANCES:
+        is_instance = true;
+        break;
+      case GEO_COMPONENT_TYPE_VOLUME:
+        is_instance = ob->type != OB_VOLUME;
+        break;
+      case GEO_COMPONENT_TYPE_CURVE:
+        is_instance = !ELEM(ob->type, OB_CURVE, OB_FONT);
+        break;
+    }
+    if (is_instance) {
+      return true;
+    }
   }
   return false;
 }

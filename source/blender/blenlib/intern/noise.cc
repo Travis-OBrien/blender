@@ -46,6 +46,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 
@@ -409,7 +410,7 @@ BLI_INLINE float noise_grad(uint32_t hash, float x, float y, float z)
 {
   uint32_t h = hash & 15u;
   float u = h < 8u ? x : y;
-  float vt = ((h == 12u) || (h == 14u)) ? x : z;
+  float vt = ELEM(h, 12u, 14u) ? x : z;
   float v = h < 4u ? y : vt;
   return negate_if(u, h & 1u) + negate_if(v, h & 2u);
 }
@@ -581,7 +582,7 @@ template<typename T> float perlin_fractal_template(T position, float octaves, fl
   float amp = 1.0f;
   float maxamp = 0.0f;
   float sum = 0.0f;
-  octaves = CLAMPIS(octaves, 0.0f, 16.0f);
+  octaves = CLAMPIS(octaves, 0.0f, 15.0f);
   int n = static_cast<int>(octaves);
   for (int i = 0; i <= n; i++) {
     float t = perlin(fscale * position);
@@ -756,6 +757,774 @@ float3 perlin_float3_fractal_distorted(float4 position,
                 perlin_fractal(position + random_float4_offset(5.0f), octaves, roughness));
 }
 
+/* --------------
+ * Musgrave Noise
+ * --------------
+ */
+
+/* 1D Musgrave fBm
+ *
+ * H: fractal increment parameter
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ *
+ * from "Texturing and Modelling: A procedural approach"
+ */
+
+float musgrave_fBm(const float co,
+                   const float H,
+                   const float lacunarity,
+                   const float octaves_unclamped)
+{
+  float p = co;
+  float value = 0.0f;
+  float pwr = 1.0f;
+  const float pwHL = powf(lacunarity, -H);
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 0; i < (int)octaves; i++) {
+    value += perlin_signed(p) * pwr;
+    pwr *= pwHL;
+    p *= lacunarity;
+  }
+
+  float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    value += rmd * perlin_signed(p) * pwr;
+  }
+
+  return value;
+}
+
+/* 1D Musgrave Multifractal
+ *
+ * H: highest fractal dimension
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ */
+
+float musgrave_multi_fractal(const float co,
+                             const float H,
+                             const float lacunarity,
+                             const float octaves_unclamped)
+{
+  float p = co;
+  float value = 1.0f;
+  float pwr = 1.0f;
+  const float pwHL = powf(lacunarity, -H);
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 0; i < (int)octaves; i++) {
+    value *= (pwr * perlin_signed(p) + 1.0f);
+    pwr *= pwHL;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    value *= (rmd * pwr * perlin_signed(p) + 1.0f); /* correct? */
+  }
+
+  return value;
+}
+
+/* 1D Musgrave Heterogeneous Terrain
+ *
+ * H: fractal dimension of the roughest area
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ * offset: raises the terrain from `sea level'
+ */
+
+float musgrave_hetero_terrain(const float co,
+                              const float H,
+                              const float lacunarity,
+                              const float octaves_unclamped,
+                              const float offset)
+{
+  float p = co;
+  const float pwHL = powf(lacunarity, -H);
+  float pwr = pwHL;
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  /* first unscaled octave of function; later octaves are scaled */
+  float value = offset + perlin_signed(p);
+  p *= lacunarity;
+
+  for (int i = 1; i < (int)octaves; i++) {
+    float increment = (perlin_signed(p) + offset) * pwr * value;
+    value += increment;
+    pwr *= pwHL;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    float increment = (perlin_signed(p) + offset) * pwr * value;
+    value += rmd * increment;
+  }
+
+  return value;
+}
+
+/* 1D Hybrid Additive/Multiplicative Multifractal Terrain
+ *
+ * H: fractal dimension of the roughest area
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ * offset: raises the terrain from `sea level'
+ */
+
+float musgrave_hybrid_multi_fractal(const float co,
+                                    const float H,
+                                    const float lacunarity,
+                                    const float octaves_unclamped,
+                                    const float offset,
+                                    const float gain)
+{
+  float p = co;
+  const float pwHL = powf(lacunarity, -H);
+  float pwr = pwHL;
+
+  float value = perlin_signed(p) + offset;
+  float weight = gain * value;
+  p *= lacunarity;
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 1; (weight > 0.001f) && (i < (int)octaves); i++) {
+    if (weight > 1.0f) {
+      weight = 1.0f;
+    }
+
+    float signal = (perlin_signed(p) + offset) * pwr;
+    pwr *= pwHL;
+    value += weight * signal;
+    weight *= gain * signal;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    value += rmd * ((perlin_signed(p) + offset) * pwr);
+  }
+
+  return value;
+}
+
+/* 1D Ridged Multifractal Terrain
+ *
+ * H: fractal dimension of the roughest area
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ * offset: raises the terrain from `sea level'
+ */
+
+float musgrave_ridged_multi_fractal(const float co,
+                                    const float H,
+                                    const float lacunarity,
+                                    const float octaves_unclamped,
+                                    const float offset,
+                                    const float gain)
+{
+  float p = co;
+  const float pwHL = powf(lacunarity, -H);
+  float pwr = pwHL;
+
+  float signal = offset - fabsf(perlin_signed(p));
+  signal *= signal;
+  float value = signal;
+  float weight = 1.0f;
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 1; i < (int)octaves; i++) {
+    p *= lacunarity;
+    weight = CLAMPIS(signal * gain, 0.0f, 1.0f);
+    signal = offset - fabsf(perlin_signed(p));
+    signal *= signal;
+    signal *= weight;
+    value += signal * pwr;
+    pwr *= pwHL;
+  }
+
+  return value;
+}
+
+/* 2D Musgrave fBm
+ *
+ * H: fractal increment parameter
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ *
+ * from "Texturing and Modelling: A procedural approach"
+ */
+
+float musgrave_fBm(const float2 co,
+                   const float H,
+                   const float lacunarity,
+                   const float octaves_unclamped)
+{
+  float2 p = co;
+  float value = 0.0f;
+  float pwr = 1.0f;
+  const float pwHL = powf(lacunarity, -H);
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 0; i < (int)octaves; i++) {
+    value += perlin_signed(p) * pwr;
+    pwr *= pwHL;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    value += rmd * perlin_signed(p) * pwr;
+  }
+
+  return value;
+}
+
+/* 2D Musgrave Multifractal
+ *
+ * H: highest fractal dimension
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ */
+
+float musgrave_multi_fractal(const float2 co,
+                             const float H,
+                             const float lacunarity,
+                             const float octaves_unclamped)
+{
+  float2 p = co;
+  float value = 1.0f;
+  float pwr = 1.0f;
+  const float pwHL = powf(lacunarity, -H);
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 0; i < (int)octaves; i++) {
+    value *= (pwr * perlin_signed(p) + 1.0f);
+    pwr *= pwHL;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    value *= (rmd * pwr * perlin_signed(p) + 1.0f); /* correct? */
+  }
+
+  return value;
+}
+
+/* 2D Musgrave Heterogeneous Terrain
+ *
+ * H: fractal dimension of the roughest area
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ * offset: raises the terrain from `sea level'
+ */
+
+float musgrave_hetero_terrain(const float2 co,
+                              const float H,
+                              const float lacunarity,
+                              const float octaves_unclamped,
+                              const float offset)
+{
+  float2 p = co;
+  const float pwHL = powf(lacunarity, -H);
+  float pwr = pwHL;
+
+  /* first unscaled octave of function; later octaves are scaled */
+  float value = offset + perlin_signed(p);
+  p *= lacunarity;
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 1; i < (int)octaves; i++) {
+    float increment = (perlin_signed(p) + offset) * pwr * value;
+    value += increment;
+    pwr *= pwHL;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    float increment = (perlin_signed(p) + offset) * pwr * value;
+    value += rmd * increment;
+  }
+
+  return value;
+}
+
+/* 2D Hybrid Additive/Multiplicative Multifractal Terrain
+ *
+ * H: fractal dimension of the roughest area
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ * offset: raises the terrain from `sea level'
+ */
+
+float musgrave_hybrid_multi_fractal(const float2 co,
+                                    const float H,
+                                    const float lacunarity,
+                                    const float octaves_unclamped,
+                                    const float offset,
+                                    const float gain)
+{
+  float2 p = co;
+  const float pwHL = powf(lacunarity, -H);
+  float pwr = pwHL;
+
+  float value = perlin_signed(p) + offset;
+  float weight = gain * value;
+  p *= lacunarity;
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 1; (weight > 0.001f) && (i < (int)octaves); i++) {
+    if (weight > 1.0f) {
+      weight = 1.0f;
+    }
+
+    float signal = (perlin_signed(p) + offset) * pwr;
+    pwr *= pwHL;
+    value += weight * signal;
+    weight *= gain * signal;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    value += rmd * ((perlin_signed(p) + offset) * pwr);
+  }
+
+  return value;
+}
+
+/* 2D Ridged Multifractal Terrain
+ *
+ * H: fractal dimension of the roughest area
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ * offset: raises the terrain from `sea level'
+ */
+
+float musgrave_ridged_multi_fractal(const float2 co,
+                                    const float H,
+                                    const float lacunarity,
+                                    const float octaves_unclamped,
+                                    const float offset,
+                                    const float gain)
+{
+  float2 p = co;
+  const float pwHL = powf(lacunarity, -H);
+  float pwr = pwHL;
+
+  float signal = offset - fabsf(perlin_signed(p));
+  signal *= signal;
+  float value = signal;
+  float weight = 1.0f;
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 1; i < (int)octaves; i++) {
+    p *= lacunarity;
+    weight = CLAMPIS(signal * gain, 0.0f, 1.0f);
+    signal = offset - fabsf(perlin_signed(p));
+    signal *= signal;
+    signal *= weight;
+    value += signal * pwr;
+    pwr *= pwHL;
+  }
+
+  return value;
+}
+
+/* 3D Musgrave fBm
+ *
+ * H: fractal increment parameter
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ *
+ * from "Texturing and Modelling: A procedural approach"
+ */
+
+float musgrave_fBm(const float3 co,
+                   const float H,
+                   const float lacunarity,
+                   const float octaves_unclamped)
+{
+  float3 p = co;
+  float value = 0.0f;
+  float pwr = 1.0f;
+  const float pwHL = powf(lacunarity, -H);
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 0; i < (int)octaves; i++) {
+    value += perlin_signed(p) * pwr;
+    pwr *= pwHL;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    value += rmd * perlin_signed(p) * pwr;
+  }
+
+  return value;
+}
+
+/* 3D Musgrave Multifractal
+ *
+ * H: highest fractal dimension
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ */
+
+float musgrave_multi_fractal(const float3 co,
+                             const float H,
+                             const float lacunarity,
+                             const float octaves_unclamped)
+{
+  float3 p = co;
+  float value = 1.0f;
+  float pwr = 1.0f;
+  const float pwHL = powf(lacunarity, -H);
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 0; i < (int)octaves; i++) {
+    value *= (pwr * perlin_signed(p) + 1.0f);
+    pwr *= pwHL;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    value *= (rmd * pwr * perlin_signed(p) + 1.0f); /* correct? */
+  }
+
+  return value;
+}
+
+/* 3D Musgrave Heterogeneous Terrain
+ *
+ * H: fractal dimension of the roughest area
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ * offset: raises the terrain from `sea level'
+ */
+
+float musgrave_hetero_terrain(const float3 co,
+                              const float H,
+                              const float lacunarity,
+                              const float octaves_unclamped,
+                              const float offset)
+{
+  float3 p = co;
+  const float pwHL = powf(lacunarity, -H);
+  float pwr = pwHL;
+
+  /* first unscaled octave of function; later octaves are scaled */
+  float value = offset + perlin_signed(p);
+  p *= lacunarity;
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 1; i < (int)octaves; i++) {
+    float increment = (perlin_signed(p) + offset) * pwr * value;
+    value += increment;
+    pwr *= pwHL;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    float increment = (perlin_signed(p) + offset) * pwr * value;
+    value += rmd * increment;
+  }
+
+  return value;
+}
+
+/* 3D Hybrid Additive/Multiplicative Multifractal Terrain
+ *
+ * H: fractal dimension of the roughest area
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ * offset: raises the terrain from `sea level'
+ */
+
+float musgrave_hybrid_multi_fractal(const float3 co,
+                                    const float H,
+                                    const float lacunarity,
+                                    const float octaves_unclamped,
+                                    const float offset,
+                                    const float gain)
+{
+  float3 p = co;
+  const float pwHL = powf(lacunarity, -H);
+  float pwr = pwHL;
+
+  float value = perlin_signed(p) + offset;
+  float weight = gain * value;
+  p *= lacunarity;
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 1; (weight > 0.001f) && (i < (int)octaves); i++) {
+    if (weight > 1.0f) {
+      weight = 1.0f;
+    }
+
+    float signal = (perlin_signed(p) + offset) * pwr;
+    pwr *= pwHL;
+    value += weight * signal;
+    weight *= gain * signal;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    value += rmd * ((perlin_signed(p) + offset) * pwr);
+  }
+
+  return value;
+}
+
+/* 3D Ridged Multifractal Terrain
+ *
+ * H: fractal dimension of the roughest area
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ * offset: raises the terrain from `sea level'
+ */
+
+float musgrave_ridged_multi_fractal(const float3 co,
+                                    const float H,
+                                    const float lacunarity,
+                                    const float octaves_unclamped,
+                                    const float offset,
+                                    const float gain)
+{
+  float3 p = co;
+  const float pwHL = powf(lacunarity, -H);
+  float pwr = pwHL;
+
+  float signal = offset - fabsf(perlin_signed(p));
+  signal *= signal;
+  float value = signal;
+  float weight = 1.0f;
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 1; i < (int)octaves; i++) {
+    p *= lacunarity;
+    weight = CLAMPIS(signal * gain, 0.0f, 1.0f);
+    signal = offset - fabsf(perlin_signed(p));
+    signal *= signal;
+    signal *= weight;
+    value += signal * pwr;
+    pwr *= pwHL;
+  }
+
+  return value;
+}
+
+/* 4D Musgrave fBm
+ *
+ * H: fractal increment parameter
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ *
+ * from "Texturing and Modelling: A procedural approach"
+ */
+
+float musgrave_fBm(const float4 co,
+                   const float H,
+                   const float lacunarity,
+                   const float octaves_unclamped)
+{
+  float4 p = co;
+  float value = 0.0f;
+  float pwr = 1.0f;
+  const float pwHL = powf(lacunarity, -H);
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 0; i < (int)octaves; i++) {
+    value += perlin_signed(p) * pwr;
+    pwr *= pwHL;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    value += rmd * perlin_signed(p) * pwr;
+  }
+
+  return value;
+}
+
+/* 4D Musgrave Multifractal
+ *
+ * H: highest fractal dimension
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ */
+
+float musgrave_multi_fractal(const float4 co,
+                             const float H,
+                             const float lacunarity,
+                             const float octaves_unclamped)
+{
+  float4 p = co;
+  float value = 1.0f;
+  float pwr = 1.0f;
+  const float pwHL = powf(lacunarity, -H);
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 0; i < (int)octaves; i++) {
+    value *= (pwr * perlin_signed(p) + 1.0f);
+    pwr *= pwHL;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    value *= (rmd * pwr * perlin_signed(p) + 1.0f); /* correct? */
+  }
+
+  return value;
+}
+
+/* 4D Musgrave Heterogeneous Terrain
+ *
+ * H: fractal dimension of the roughest area
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ * offset: raises the terrain from `sea level'
+ */
+
+float musgrave_hetero_terrain(const float4 co,
+                              const float H,
+                              const float lacunarity,
+                              const float octaves_unclamped,
+                              const float offset)
+{
+  float4 p = co;
+  const float pwHL = powf(lacunarity, -H);
+  float pwr = pwHL;
+
+  /* first unscaled octave of function; later octaves are scaled */
+  float value = offset + perlin_signed(p);
+  p *= lacunarity;
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 1; i < (int)octaves; i++) {
+    float increment = (perlin_signed(p) + offset) * pwr * value;
+    value += increment;
+    pwr *= pwHL;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    float increment = (perlin_signed(p) + offset) * pwr * value;
+    value += rmd * increment;
+  }
+
+  return value;
+}
+
+/* 4D Hybrid Additive/Multiplicative Multifractal Terrain
+ *
+ * H: fractal dimension of the roughest area
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ * offset: raises the terrain from `sea level'
+ */
+
+float musgrave_hybrid_multi_fractal(const float4 co,
+                                    const float H,
+                                    const float lacunarity,
+                                    const float octaves_unclamped,
+                                    const float offset,
+                                    const float gain)
+{
+  float4 p = co;
+  const float pwHL = powf(lacunarity, -H);
+  float pwr = pwHL;
+
+  float value = perlin_signed(p) + offset;
+  float weight = gain * value;
+  p *= lacunarity;
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 1; (weight > 0.001f) && (i < (int)octaves); i++) {
+    if (weight > 1.0f) {
+      weight = 1.0f;
+    }
+
+    float signal = (perlin_signed(p) + offset) * pwr;
+    pwr *= pwHL;
+    value += weight * signal;
+    weight *= gain * signal;
+    p *= lacunarity;
+  }
+
+  const float rmd = octaves - floorf(octaves);
+  if (rmd != 0.0f) {
+    value += rmd * ((perlin_signed(p) + offset) * pwr);
+  }
+
+  return value;
+}
+
+/* 4D Ridged Multifractal Terrain
+ *
+ * H: fractal dimension of the roughest area
+ * lacunarity: gap between successive frequencies
+ * octaves: number of frequencies in the fBm
+ * offset: raises the terrain from `sea level'
+ */
+
+float musgrave_ridged_multi_fractal(const float4 co,
+                                    const float H,
+                                    const float lacunarity,
+                                    const float octaves_unclamped,
+                                    const float offset,
+                                    const float gain)
+{
+  float4 p = co;
+  const float pwHL = powf(lacunarity, -H);
+  float pwr = pwHL;
+
+  float signal = offset - fabsf(perlin_signed(p));
+  signal *= signal;
+  float value = signal;
+  float weight = 1.0f;
+
+  const float octaves = CLAMPIS(octaves_unclamped, 0.0f, 15.0f);
+
+  for (int i = 1; i < (int)octaves; i++) {
+    p *= lacunarity;
+    weight = CLAMPIS(signal * gain, 0.0f, 1.0f);
+    signal = offset - fabsf(perlin_signed(p));
+    signal *= signal;
+    signal *= weight;
+    value += signal * pwr;
+    pwr *= pwHL;
+  }
+
+  return value;
+}
+
 /*
  * Voronoi: Ported from Cycles code.
  *
@@ -809,9 +1578,15 @@ void voronoi_f1(
       targetPosition = pointPosition;
     }
   }
-  *r_distance = minDistance;
-  *r_color = hash_float_to_float3(cellPosition + targetOffset);
-  *r_w = targetPosition + cellPosition;
+  if (r_distance != nullptr) {
+    *r_distance = minDistance;
+  }
+  if (r_color != nullptr) {
+    *r_color = hash_float_to_float3(cellPosition + targetOffset);
+  }
+  if (r_w != nullptr) {
+    *r_w = targetPosition + cellPosition;
+  }
 }
 
 void voronoi_smooth_f1(const float w,
@@ -823,6 +1598,7 @@ void voronoi_smooth_f1(const float w,
 {
   const float cellPosition = floorf(w);
   const float localPosition = w - cellPosition;
+  const float smoothness_clamped = max_ff(smoothness, FLT_MIN);
 
   float smoothDistance = 8.0f;
   float smoothPosition = 0.0f;
@@ -833,17 +1609,29 @@ void voronoi_smooth_f1(const float w,
                                 hash_float_to_float(cellPosition + cellOffset) * randomness;
     const float distanceToPoint = voronoi_distance(pointPosition, localPosition);
     const float h = smoothstep(
-        0.0f, 1.0f, 0.5f + 0.5f * (smoothDistance - distanceToPoint) / smoothness);
+        0.0f, 1.0f, 0.5f + 0.5f * (smoothDistance - distanceToPoint) / smoothness_clamped);
     float correctionFactor = smoothness * h * (1.0f - h);
     smoothDistance = mix(smoothDistance, distanceToPoint, h) - correctionFactor;
-    correctionFactor /= 1.0f + 3.0f * smoothness;
-    const float3 cellColor = hash_float_to_float3(cellPosition + cellOffset);
-    smoothColor = float3::interpolate(smoothColor, cellColor, h) - correctionFactor;
-    smoothPosition = mix(smoothPosition, pointPosition, h) - correctionFactor;
+    if (r_color != nullptr || r_w != nullptr) {
+      correctionFactor /= 1.0f + 3.0f * smoothness;
+      if (r_color != nullptr) {
+        const float3 cellColor = hash_float_to_float3(cellPosition + cellOffset);
+        smoothColor = float3::interpolate(smoothColor, cellColor, h) - correctionFactor;
+      }
+      if (r_w != nullptr) {
+        smoothPosition = mix(smoothPosition, pointPosition, h) - correctionFactor;
+      }
+    }
   }
-  *r_distance = smoothDistance;
-  *r_color = smoothColor;
-  *r_w = cellPosition + smoothPosition;
+  if (r_distance != nullptr) {
+    *r_distance = smoothDistance;
+  }
+  if (r_color != nullptr) {
+    *r_color = smoothColor;
+  }
+  if (r_w != nullptr) {
+    *r_w = cellPosition + smoothPosition;
+  }
 }
 
 void voronoi_f2(
@@ -877,9 +1665,15 @@ void voronoi_f2(
       positionF2 = pointPosition;
     }
   }
-  *r_distance = distanceF2;
-  *r_color = hash_float_to_float3(cellPosition + offsetF2);
-  *r_w = positionF2 + cellPosition;
+  if (r_distance != nullptr) {
+    *r_distance = distanceF2;
+  }
+  if (r_color != nullptr) {
+    *r_color = hash_float_to_float3(cellPosition + offsetF2);
+  }
+  if (r_w != nullptr) {
+    *r_w = positionF2 + cellPosition;
+  }
 }
 
 void voronoi_distance_to_edge(const float w, const float randomness, float *r_distance)
@@ -987,9 +1781,15 @@ void voronoi_f1(const float2 coord,
       }
     }
   }
-  *r_distance = minDistance;
-  *r_color = hash_float_to_float3(cellPosition + targetOffset);
-  *r_position = targetPosition + cellPosition;
+  if (r_distance != nullptr) {
+    *r_distance = minDistance;
+  }
+  if (r_color != nullptr) {
+    *r_color = hash_float_to_float3(cellPosition + targetOffset);
+  }
+  if (r_position != nullptr) {
+    *r_position = targetPosition + cellPosition;
+  }
 }
 
 void voronoi_smooth_f1(const float2 coord,
@@ -1003,6 +1803,7 @@ void voronoi_smooth_f1(const float2 coord,
 {
   const float2 cellPosition = float2::floor(coord);
   const float2 localPosition = coord - cellPosition;
+  const float smoothness_clamped = max_ff(smoothness, FLT_MIN);
 
   float smoothDistance = 8.0f;
   float3 smoothColor = float3(0.0f, 0.0f, 0.0f);
@@ -1015,18 +1816,31 @@ void voronoi_smooth_f1(const float2 coord,
       const float distanceToPoint = voronoi_distance(
           pointPosition, localPosition, metric, exponent);
       const float h = smoothstep(
-          0.0f, 1.0f, 0.5f + 0.5f * (smoothDistance - distanceToPoint) / smoothness);
+          0.0f, 1.0f, 0.5f + 0.5f * (smoothDistance - distanceToPoint) / smoothness_clamped);
       float correctionFactor = smoothness * h * (1.0f - h);
       smoothDistance = mix(smoothDistance, distanceToPoint, h) - correctionFactor;
-      correctionFactor /= 1.0f + 3.0f * smoothness;
-      const float3 cellColor = hash_float_to_float3(cellPosition + cellOffset);
-      smoothColor = float3::interpolate(smoothColor, cellColor, h) - correctionFactor;
-      smoothPosition = float2::interpolate(smoothPosition, pointPosition, h) - correctionFactor;
+      if (r_color != nullptr || r_position != nullptr) {
+        correctionFactor /= 1.0f + 3.0f * smoothness;
+        if (r_color != nullptr) {
+          const float3 cellColor = hash_float_to_float3(cellPosition + cellOffset);
+          smoothColor = float3::interpolate(smoothColor, cellColor, h) - correctionFactor;
+        }
+        if (r_position != nullptr) {
+          smoothPosition = float2::interpolate(smoothPosition, pointPosition, h) -
+                           correctionFactor;
+        }
+      }
     }
   }
-  *r_distance = smoothDistance;
-  *r_color = smoothColor;
-  *r_position = cellPosition + smoothPosition;
+  if (r_distance != nullptr) {
+    *r_distance = smoothDistance;
+  }
+  if (r_color != nullptr) {
+    *r_color = smoothColor;
+  }
+  if (r_position != nullptr) {
+    *r_position = cellPosition + smoothPosition;
+  }
 }
 
 void voronoi_f2(const float2 coord,
@@ -1068,9 +1882,15 @@ void voronoi_f2(const float2 coord,
       }
     }
   }
-  *r_distance = distanceF2;
-  *r_color = hash_float_to_float3(cellPosition + offsetF2);
-  *r_position = positionF2 + cellPosition;
+  if (r_distance != nullptr) {
+    *r_distance = distanceF2;
+  }
+  if (r_color != nullptr) {
+    *r_color = hash_float_to_float3(cellPosition + offsetF2);
+  }
+  if (r_position != nullptr) {
+    *r_position = positionF2 + cellPosition;
+  }
 }
 
 void voronoi_distance_to_edge(const float2 coord, const float randomness, float *r_distance)
@@ -1209,9 +2029,15 @@ void voronoi_f1(const float3 coord,
       }
     }
   }
-  *r_distance = minDistance;
-  *r_color = hash_float_to_float3(cellPosition + targetOffset);
-  *r_position = targetPosition + cellPosition;
+  if (r_distance != nullptr) {
+    *r_distance = minDistance;
+  }
+  if (r_color != nullptr) {
+    *r_color = hash_float_to_float3(cellPosition + targetOffset);
+  }
+  if (r_position != nullptr) {
+    *r_position = targetPosition + cellPosition;
+  }
 }
 
 void voronoi_smooth_f1(const float3 coord,
@@ -1225,6 +2051,7 @@ void voronoi_smooth_f1(const float3 coord,
 {
   const float3 cellPosition = float3::floor(coord);
   const float3 localPosition = coord - cellPosition;
+  const float smoothness_clamped = max_ff(smoothness, FLT_MIN);
 
   float smoothDistance = 8.0f;
   float3 smoothColor = float3(0.0f, 0.0f, 0.0f);
@@ -1238,19 +2065,32 @@ void voronoi_smooth_f1(const float3 coord,
         const float distanceToPoint = voronoi_distance(
             pointPosition, localPosition, metric, exponent);
         const float h = smoothstep(
-            0.0f, 1.0f, 0.5f + 0.5f * (smoothDistance - distanceToPoint) / smoothness);
+            0.0f, 1.0f, 0.5f + 0.5f * (smoothDistance - distanceToPoint) / smoothness_clamped);
         float correctionFactor = smoothness * h * (1.0f - h);
         smoothDistance = mix(smoothDistance, distanceToPoint, h) - correctionFactor;
-        correctionFactor /= 1.0f + 3.0f * smoothness;
-        const float3 cellColor = hash_float_to_float3(cellPosition + cellOffset);
-        smoothColor = float3::interpolate(smoothColor, cellColor, h) - correctionFactor;
-        smoothPosition = float3::interpolate(smoothPosition, pointPosition, h) - correctionFactor;
+        if (r_color != nullptr || r_position != nullptr) {
+          correctionFactor /= 1.0f + 3.0f * smoothness;
+          if (r_color != nullptr) {
+            const float3 cellColor = hash_float_to_float3(cellPosition + cellOffset);
+            smoothColor = float3::interpolate(smoothColor, cellColor, h) - correctionFactor;
+          }
+          if (r_position != nullptr) {
+            smoothPosition = float3::interpolate(smoothPosition, pointPosition, h) -
+                             correctionFactor;
+          }
+        }
       }
     }
   }
-  *r_distance = smoothDistance;
-  *r_color = smoothColor;
-  *r_position = cellPosition + smoothPosition;
+  if (r_distance != nullptr) {
+    *r_distance = smoothDistance;
+  }
+  if (r_color != nullptr) {
+    *r_color = smoothColor;
+  }
+  if (r_position != nullptr) {
+    *r_position = cellPosition + smoothPosition;
+  }
 }
 
 void voronoi_f2(const float3 coord,
@@ -1294,9 +2134,15 @@ void voronoi_f2(const float3 coord,
       }
     }
   }
-  *r_distance = distanceF2;
-  *r_color = hash_float_to_float3(cellPosition + offsetF2);
-  *r_position = positionF2 + cellPosition;
+  if (r_distance != nullptr) {
+    *r_distance = distanceF2;
+  }
+  if (r_color != nullptr) {
+    *r_color = hash_float_to_float3(cellPosition + offsetF2);
+  }
+  if (r_position != nullptr) {
+    *r_position = positionF2 + cellPosition;
+  }
 }
 
 void voronoi_distance_to_edge(const float3 coord, const float randomness, float *r_distance)
@@ -1447,9 +2293,15 @@ void voronoi_f1(const float4 coord,
       }
     }
   }
-  *r_distance = minDistance;
-  *r_color = hash_float_to_float3(cellPosition + targetOffset);
-  *r_position = targetPosition + cellPosition;
+  if (r_distance != nullptr) {
+    *r_distance = minDistance;
+  }
+  if (r_color != nullptr) {
+    *r_color = hash_float_to_float3(cellPosition + targetOffset);
+  }
+  if (r_position != nullptr) {
+    *r_position = targetPosition + cellPosition;
+  }
 }
 
 void voronoi_smooth_f1(const float4 coord,
@@ -1463,6 +2315,7 @@ void voronoi_smooth_f1(const float4 coord,
 {
   const float4 cellPosition = float4::floor(coord);
   const float4 localPosition = coord - cellPosition;
+  const float smoothness_clamped = max_ff(smoothness, FLT_MIN);
 
   float smoothDistance = 8.0f;
   float3 smoothColor = float3(0.0f, 0.0f, 0.0f);
@@ -1478,21 +2331,33 @@ void voronoi_smooth_f1(const float4 coord,
           const float distanceToPoint = voronoi_distance(
               pointPosition, localPosition, metric, exponent);
           const float h = smoothstep(
-              0.0f, 1.0f, 0.5f + 0.5f * (smoothDistance - distanceToPoint) / smoothness);
+              0.0f, 1.0f, 0.5f + 0.5f * (smoothDistance - distanceToPoint) / smoothness_clamped);
           float correctionFactor = smoothness * h * (1.0f - h);
           smoothDistance = mix(smoothDistance, distanceToPoint, h) - correctionFactor;
-          correctionFactor /= 1.0f + 3.0f * smoothness;
-          const float3 cellColor = hash_float_to_float3(cellPosition + cellOffset);
-          smoothColor = float3::interpolate(smoothColor, cellColor, h) - correctionFactor;
-          smoothPosition = float4::interpolate(smoothPosition, pointPosition, h) -
-                           correctionFactor;
+          if (r_color != nullptr || r_position != nullptr) {
+            correctionFactor /= 1.0f + 3.0f * smoothness;
+            if (r_color != nullptr) {
+              const float3 cellColor = hash_float_to_float3(cellPosition + cellOffset);
+              smoothColor = float3::interpolate(smoothColor, cellColor, h) - correctionFactor;
+            }
+            if (r_position != nullptr) {
+              smoothPosition = float4::interpolate(smoothPosition, pointPosition, h) -
+                               correctionFactor;
+            }
+          }
         }
       }
     }
   }
-  *r_distance = smoothDistance;
-  *r_color = smoothColor;
-  *r_position = cellPosition + smoothPosition;
+  if (r_distance != nullptr) {
+    *r_distance = smoothDistance;
+  }
+  if (r_color != nullptr) {
+    *r_color = smoothColor;
+  }
+  if (r_position != nullptr) {
+    *r_position = cellPosition + smoothPosition;
+  }
 }
 
 void voronoi_f2(const float4 coord,
@@ -1539,9 +2404,15 @@ void voronoi_f2(const float4 coord,
       }
     }
   }
-  *r_distance = distanceF2;
-  *r_color = hash_float_to_float3(cellPosition + offsetF2);
-  *r_position = positionF2 + cellPosition;
+  if (r_distance != nullptr) {
+    *r_distance = distanceF2;
+  }
+  if (r_color != nullptr) {
+    *r_color = hash_float_to_float3(cellPosition + offsetF2);
+  }
+  if (r_position != nullptr) {
+    *r_position = positionF2 + cellPosition;
+  }
 }
 
 void voronoi_distance_to_edge(const float4 coord, const float randomness, float *r_distance)

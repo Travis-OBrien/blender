@@ -145,12 +145,24 @@ class ColorBuilder : public SocketDeclarationBuilder<Color> {
   ColorBuilder &default_value(const ColorGeometry4f value);
 };
 
+class StringBuilder;
+
 class String : public SocketDeclaration {
+ private:
+  std::string default_value_;
+
+  friend StringBuilder;
+
  public:
-  using Builder = SocketDeclarationBuilder<String>;
+  using Builder = StringBuilder;
 
   bNodeSocket &build(bNodeTree &ntree, bNode &node, eNodeSocketInOut in_out) const override;
   bool matches(const bNodeSocket &socket) const override;
+};
+
+class StringBuilder : public SocketDeclarationBuilder<String> {
+ public:
+  StringBuilder &default_value(const std::string value);
 };
 
 class IDSocketDeclaration : public SocketDeclaration {
@@ -198,14 +210,6 @@ class Image : public IDSocketDeclaration {
   using Builder = SocketDeclarationBuilder<Image>;
 
   Image();
-};
-
-class Geometry : public SocketDeclaration {
- public:
-  using Builder = SocketDeclarationBuilder<Geometry>;
-
-  bNodeSocket &build(bNodeTree &ntree, bNode &node, eNodeSocketInOut in_out) const override;
-  bool matches(const bNodeSocket &socket) const override;
 };
 
 /* -------------------------------------------------------------------- */
@@ -323,6 +327,18 @@ inline ColorBuilder &ColorBuilder::default_value(const ColorGeometry4f value)
 /** \} */
 
 /* -------------------------------------------------------------------- */
+/** \name #StringBuilder Inline Methods
+ * \{ */
+
+inline StringBuilder &StringBuilder::default_value(std::string value)
+{
+  decl_->default_value_ = std::move(value);
+  return *this;
+}
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
 /** \name #IDSocketDeclaration and Children Inline Methods
  * \{ */
 
@@ -372,9 +388,7 @@ MAKE_EXTERN_SOCKET_DECLARATION(decl::Vector)
 MAKE_EXTERN_SOCKET_DECLARATION(decl::Bool)
 MAKE_EXTERN_SOCKET_DECLARATION(decl::Color)
 MAKE_EXTERN_SOCKET_DECLARATION(decl::String)
-MAKE_EXTERN_SOCKET_DECLARATION(decl::Geometry)
 
-#undef MAKE_EXTERN_SOCKET_DECLARATION
 }  // namespace blender::nodes
 
 /** \} */

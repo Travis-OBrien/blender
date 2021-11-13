@@ -17,14 +17,14 @@
 #include "integrator/shader_eval.h"
 
 #include "device/device.h"
-#include "device/device_queue.h"
+#include "device/queue.h"
 
 #include "device/cpu/kernel.h"
 #include "device/cpu/kernel_thread_globals.h"
 
-#include "util/util_logging.h"
-#include "util/util_progress.h"
-#include "util/util_tbb.h"
+#include "util/log.h"
+#include "util/progress.h"
+#include "util/tbb.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -96,7 +96,7 @@ bool ShaderEval::eval_cpu(Device *device,
   device->get_cpu_kernel_thread_globals(kernel_thread_globals);
 
   /* Find required kernel function. */
-  const CPUKernels &kernels = *(device->get_cpu_kernels());
+  const CPUKernels &kernels = Device::get_cpu_kernels();
 
   /* Simple parallel_for over all work items. */
   KernelShaderEvalInput *input_data = input.data();
@@ -113,7 +113,7 @@ bool ShaderEval::eval_cpu(Device *device,
       }
 
       const int thread_index = tbb::this_task_arena::current_thread_index();
-      KernelGlobals *kg = &kernel_thread_globals[thread_index];
+      const KernelGlobalsCPU *kg = &kernel_thread_globals[thread_index];
 
       switch (type) {
         case SHADER_EVAL_DISPLACE:
@@ -121,6 +121,9 @@ bool ShaderEval::eval_cpu(Device *device,
           break;
         case SHADER_EVAL_BACKGROUND:
           kernels.shader_eval_background(kg, input_data, output_data, work_index);
+          break;
+        case SHADER_EVAL_CURVE_SHADOW_TRANSPARENCY:
+          kernels.shader_eval_curve_shadow_transparency(kg, input_data, output_data, work_index);
           break;
       }
     });
@@ -143,6 +146,9 @@ bool ShaderEval::eval_gpu(Device *device,
       break;
     case SHADER_EVAL_BACKGROUND:
       kernel = DEVICE_KERNEL_SHADER_EVAL_BACKGROUND;
+      break;
+    case SHADER_EVAL_CURVE_SHADOW_TRANSPARENCY:
+      kernel = DEVICE_KERNEL_SHADER_EVAL_CURVE_SHADOW_TRANSPARENCY;
       break;
   };
 

@@ -40,22 +40,25 @@ namespace blender::nodes {
 
 static void geo_node_transfer_attribute_declare(NodeDeclarationBuilder &b)
 {
-  b.add_input<decl::Geometry>("Target");
+  b.add_input<decl::Geometry>(N_("Target"))
+      .only_realized_data()
+      .supported_type(
+          {GEO_COMPONENT_TYPE_MESH, GEO_COMPONENT_TYPE_POINT_CLOUD, GEO_COMPONENT_TYPE_CURVE});
 
-  b.add_input<decl::Vector>("Attribute").hide_value().supports_field();
-  b.add_input<decl::Float>("Attribute", "Attribute_001").hide_value().supports_field();
-  b.add_input<decl::Color>("Attribute", "Attribute_002").hide_value().supports_field();
-  b.add_input<decl::Bool>("Attribute", "Attribute_003").hide_value().supports_field();
-  b.add_input<decl::Int>("Attribute", "Attribute_004").hide_value().supports_field();
+  b.add_input<decl::Vector>(N_("Attribute")).hide_value().supports_field();
+  b.add_input<decl::Float>(N_("Attribute"), "Attribute_001").hide_value().supports_field();
+  b.add_input<decl::Color>(N_("Attribute"), "Attribute_002").hide_value().supports_field();
+  b.add_input<decl::Bool>(N_("Attribute"), "Attribute_003").hide_value().supports_field();
+  b.add_input<decl::Int>(N_("Attribute"), "Attribute_004").hide_value().supports_field();
 
-  b.add_input<decl::Vector>("Source Position").implicit_field();
-  b.add_input<decl::Int>("Index").implicit_field();
+  b.add_input<decl::Vector>(N_("Source Position")).implicit_field();
+  b.add_input<decl::Int>(N_("Index")).implicit_field();
 
-  b.add_output<decl::Vector>("Attribute").dependent_field({6, 7});
-  b.add_output<decl::Float>("Attribute", "Attribute_001").dependent_field({6, 7});
-  b.add_output<decl::Color>("Attribute", "Attribute_002").dependent_field({6, 7});
-  b.add_output<decl::Bool>("Attribute", "Attribute_003").dependent_field({6, 7});
-  b.add_output<decl::Int>("Attribute", "Attribute_004").dependent_field({6, 7});
+  b.add_output<decl::Vector>(N_("Attribute")).dependent_field({6, 7});
+  b.add_output<decl::Float>(N_("Attribute"), "Attribute_001").dependent_field({6, 7});
+  b.add_output<decl::Color>(N_("Attribute"), "Attribute_002").dependent_field({6, 7});
+  b.add_output<decl::Bool>(N_("Attribute"), "Attribute_003").dependent_field({6, 7});
+  b.add_output<decl::Int>(N_("Attribute"), "Attribute_004").dependent_field({6, 7});
 }
 
 static void geo_node_transfer_attribute_layout(uiLayout *layout,
@@ -170,7 +173,9 @@ static void get_closest_pointcloud_points(const PointCloud &pointcloud,
     BLI_bvhtree_find_nearest(
         tree_data.tree, position, &nearest, tree_data.nearest_callback, &tree_data);
     r_indices[i] = nearest.index;
-    r_distances_sq[i] = nearest.dist_sq;
+    if (!r_distances_sq.is_empty()) {
+      r_distances_sq[i] = nearest.dist_sq;
+    }
   }
 
   free_bvhtree_from_pointcloud(&tree_data);
@@ -301,7 +306,7 @@ void copy_with_indices(const VArray<T> &src,
 template<typename T>
 void copy_with_indices_clamped(const VArray<T> &src,
                                const IndexMask mask,
-                               const Span<int> indices,
+                               const VArray<int> &indices,
                                const MutableSpan<T> dst)
 {
   if (src.is_empty()) {
@@ -409,8 +414,8 @@ class NearestInterpolatedTransferFunction : public fn::MultiFunction {
     Array<float3> sampled_positions(mask.min_array_size());
     get_closest_mesh_looptris(mesh, positions, mask, looptri_indices, {}, sampled_positions);
 
-    MeshAttributeInterpolator interp(&mesh, sampled_positions, looptri_indices);
-    interp.sample_data(*target_data_, domain_, eAttributeMapMode::INTERPOLATED, mask, dst);
+    MeshAttributeInterpolator interp(&mesh, mask, sampled_positions, looptri_indices);
+    interp.sample_data(*target_data_, domain_, eAttributeMapMode::INTERPOLATED, dst);
   }
 
  private:
@@ -495,7 +500,7 @@ class NearestTransferFunction : public fn::MultiFunction {
     Array<int> mesh_indices;
     Array<float> mesh_distances;
 
-    /* If there is a pointcloud, find the closest points. */
+    /* If there is a point-cloud, find the closest points. */
     if (use_points_) {
       point_indices.reinitialize(tot_samples);
       if (use_mesh_) {
@@ -583,18 +588,11 @@ class NearestTransferFunction : public fn::MultiFunction {
   }
 };
 
-static const GeometryComponent *find_best_match_component(const GeometrySet &geometry,
-                                                          const GeometryComponentType type,
-                                                          const AttributeDomain domain)
+static const GeometryComponent *find_target_component(const GeometrySet &geometry,
+                                                      const AttributeDomain domain)
 {
-  /* Prefer transferring from the same component type, if it exists. */
-  if (component_is_available(geometry, type, domain)) {
-    return geometry.get_component_for_read(type);
-  }
-
-  /* If there is no component of the same type, choose the other component based on a consistent
-   * order, rather than some more complicated heuristic. This is the same order visible in the
-   * spreadsheet and used in the raycast node. */
+  /* Choose the other component based on a consistent order, rather than some more complicated
+   * heuristic. This is the same order visible in the spreadsheet and used in the ray-cast node. */
   static const Array<GeometryComponentType> supported_types = {
       GEO_COMPONENT_TYPE_MESH, GEO_COMPONENT_TYPE_POINT_CLOUD, GEO_COMPONENT_TYPE_CURVE};
   for (const GeometryComponentType src_type : supported_types) {
@@ -607,75 +605,71 @@ static const GeometryComponent *find_best_match_component(const GeometrySet &geo
 }
 
 /**
- * Use a FieldInput because it's necessary to know the field context in order to choose the
- * corresponding component type from the input geometry, and only a FieldInput receives the
- * evaluation context to provide its data.
- *
  * The index-based transfer theoretically does not need realized data when there is only one
  * instance geometry set in the target. A future optimization could be removing that limitation
  * internally.
  */
-class IndexTransferFieldInput : public FieldInput {
+class IndexTransferFunction : public fn::MultiFunction {
   GeometrySet src_geometry_;
   GField src_field_;
-  Field<int> index_field_;
   AttributeDomain domain_;
 
+  fn::MFSignature signature_;
+
+  std::optional<GeometryComponentFieldContext> geometry_context_;
+  std::unique_ptr<FieldEvaluator> evaluator_;
+  const GVArray *src_data_ = nullptr;
+
  public:
-  IndexTransferFieldInput(GeometrySet geometry,
-                          GField src_field,
-                          Field<int> index_field,
-                          const AttributeDomain domain)
-      : FieldInput(src_field.cpp_type(), "Attribute Transfer Index"),
-        src_geometry_(std::move(geometry)),
-        src_field_(std::move(src_field)),
-        index_field_(std::move(index_field)),
-        domain_(domain)
+  IndexTransferFunction(GeometrySet geometry, GField src_field, const AttributeDomain domain)
+      : src_geometry_(std::move(geometry)), src_field_(std::move(src_field)), domain_(domain)
   {
     src_geometry_.ensure_owns_direct_data();
+
+    signature_ = this->create_signature();
+    this->set_signature(&signature_);
+
+    this->evaluate_field();
   }
 
-  const GVArray *get_varray_for_context(const FieldContext &context,
-                                        const IndexMask mask,
-                                        ResourceScope &scope) const final
+  fn::MFSignature create_signature()
   {
-    const GeometryComponentFieldContext *geometry_context =
-        dynamic_cast<const GeometryComponentFieldContext *>(&context);
-    if (geometry_context == nullptr) {
-      return nullptr;
-    }
+    fn::MFSignatureBuilder signature{"Attribute Transfer Index"};
+    signature.single_input<int>("Index");
+    signature.single_output("Attribute", src_field_.cpp_type());
+    return signature.build();
+  }
 
-    FieldEvaluator index_evaluator{*geometry_context, &mask};
-    index_evaluator.add(index_field_);
-    index_evaluator.evaluate();
-    const VArray<int> &index_varray = index_evaluator.get_evaluated<int>(0);
-    /* The index virtual array is expected to be a span, since transferring the same index for
-     * every element is not very useful. */
-    VArray_Span<int> indices{index_varray};
-
-    const GeometryComponent *component = find_best_match_component(
-        src_geometry_, geometry_context->geometry_component().type(), domain_);
+  void evaluate_field()
+  {
+    const GeometryComponent *component = find_target_component(src_geometry_, domain_);
     if (component == nullptr) {
-      return nullptr;
+      return;
+    }
+    const int domain_size = component->attribute_domain_size(domain_);
+    geometry_context_.emplace(GeometryComponentFieldContext(*component, domain_));
+    evaluator_ = std::make_unique<FieldEvaluator>(*geometry_context_, domain_size);
+    evaluator_->add(src_field_);
+    evaluator_->evaluate();
+    src_data_ = &evaluator_->get_evaluated(0);
+  }
+
+  void call(IndexMask mask, fn::MFParams params, fn::MFContext UNUSED(context)) const override
+  {
+    const VArray<int> &indices = params.readonly_single_input<int>(0, "Index");
+    GMutableSpan dst = params.uninitialized_single_output(1, "Attribute");
+
+    const CPPType &type = dst.type();
+    if (src_data_ == nullptr) {
+      type.fill_construct_indices(type.default_value(), dst.data(), mask);
+      return;
     }
 
-    GeometryComponentFieldContext target_context{*component, domain_};
-    /* A potential improvement is to only copy the necessary values
-     * based on the indices retrieved from the index input field. */
-    FieldEvaluator target_evaluator{target_context, component->attribute_domain_size(domain_)};
-    target_evaluator.add(src_field_);
-    target_evaluator.evaluate();
-    const GVArray &src_data = target_evaluator.get_evaluated(0);
-
-    GArray dst(src_field_.cpp_type(), mask.min_array_size());
-
-    attribute_math::convert_to_static_type(src_data.type(), [&](auto dummy) {
+    attribute_math::convert_to_static_type(type, [&](auto dummy) {
       using T = decltype(dummy);
-      GVArray_Typed<T> src{src_data};
-      copy_with_indices_clamped(*src, mask, indices, dst.as_mutable_span().typed<T>());
+      GVArray_Typed<T> src{*src_data_};
+      copy_with_indices_clamped(*src, mask, indices, dst.typed<T>());
     });
-
-    return &scope.construct<fn::GVArray_For_GArray>(std::move(dst));
   }
 };
 
@@ -744,21 +738,9 @@ static void geo_node_transfer_attribute_exec(GeoNodeExecParams params)
     });
   };
 
-  if (geometry.has_instances()) {
-    if (geometry.has_realized_data()) {
-      params.error_message_add(
-          NodeWarningType::Info,
-          TIP_("Only realized geometry is supported, instances will not be used"));
-    }
-    else {
-      params.error_message_add(NodeWarningType::Error,
-                               TIP_("Target geometry must contain realized data"));
-      return return_default();
-    }
-    /* Since the instances are not used, there is no point in keeping
-     * a reference to them while the field is passed around. */
-    geometry.remove(GEO_COMPONENT_TYPE_INSTANCES);
-  }
+  /* Since the instances are not used, there is no point in keeping
+   * a reference to them while the field is passed around. */
+  geometry.remove(GEO_COMPONENT_TYPE_INSTANCES);
 
   GField output_field;
   switch (mapping) {
@@ -788,8 +770,8 @@ static void geo_node_transfer_attribute_exec(GeoNodeExecParams params)
     }
     case GEO_NODE_ATTRIBUTE_TRANSFER_NEAREST: {
       if (geometry.has_curve() && !geometry.has_mesh() && !geometry.has_pointcloud()) {
-        params.error_message_add(NodeWarningType::Warning,
-                                 TIP_("Curve targets are not currently supported"));
+        params.error_message_add(NodeWarningType::Error,
+                                 TIP_("The target geometry must contain a mesh or a point cloud"));
         return return_default();
       }
       auto fn = std::make_unique<NearestTransferFunction>(
@@ -801,9 +783,11 @@ static void geo_node_transfer_attribute_exec(GeoNodeExecParams params)
     }
     case GEO_NODE_ATTRIBUTE_TRANSFER_INDEX: {
       Field<int> indices = params.extract_input<Field<int>>("Index");
-      std::shared_ptr<FieldInput> input = std::make_shared<IndexTransferFieldInput>(
-          std::move(geometry), std::move(field), std::move(indices), domain);
-      output_field = GField(std::move(input));
+      auto fn = std::make_unique<IndexTransferFunction>(
+          std::move(geometry), std::move(field), domain);
+      auto op = std::make_shared<FieldOperation>(
+          FieldOperation(std::move(fn), {std::move(indices)}));
+      output_field = GField(std::move(op));
       break;
     }
   }

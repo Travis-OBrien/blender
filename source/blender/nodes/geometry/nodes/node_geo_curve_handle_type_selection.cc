@@ -25,7 +25,7 @@ namespace blender::nodes {
 
 static void geo_node_curve_handle_type_selection_declare(NodeDeclarationBuilder &b)
 {
-  b.add_output<decl::Bool>("Selection").field_source();
+  b.add_output<decl::Bool>(N_("Selection")).field_source();
 }
 
 static void geo_node_curve_handle_type_selection_layout(uiLayout *layout,
@@ -91,8 +91,9 @@ class HandleTypeFieldInput final : public fn::FieldInput {
 
  public:
   HandleTypeFieldInput(BezierSpline::HandleType type, GeometryNodeCurveHandleMode mode)
-      : FieldInput(CPPType::get<bool>(), "Selection"), type_(type), mode_(mode)
+      : FieldInput(CPPType::get<bool>(), "Handle Type Selection node"), type_(type), mode_(mode)
   {
+    category_ = Category::Generated;
   }
 
   const GVArray *get_varray_for_context(const fn::FieldContext &context,
@@ -157,11 +158,8 @@ void register_node_type_geo_curve_handle_type_selection()
 {
   static bNodeType ntype;
 
-  geo_node_type_base(&ntype,
-                     GEO_NODE_CURVE_HANDLE_TYPE_SELECTION,
-                     "Handle Type Selection",
-                     NODE_CLASS_GEOMETRY,
-                     0);
+  geo_node_type_base(
+      &ntype, GEO_NODE_CURVE_HANDLE_TYPE_SELECTION, "Handle Type Selection", NODE_CLASS_INPUT, 0);
   ntype.declare = blender::nodes::geo_node_curve_handle_type_selection_declare;
   ntype.geometry_node_execute = blender::nodes::geo_node_curve_handle_type_selection_exec;
   node_type_init(&ntype, blender::nodes::geo_node_curve_handle_type_selection_init);

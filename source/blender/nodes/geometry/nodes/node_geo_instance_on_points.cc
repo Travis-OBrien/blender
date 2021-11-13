@@ -28,33 +28,29 @@ namespace blender::nodes {
 
 static void geo_node_instance_on_points_declare(NodeDeclarationBuilder &b)
 {
-  b.add_input<decl::Geometry>("Points").description("Points to instance on");
-  b.add_input<decl::Bool>("Selection").default_value(true).supports_field().hide_value();
-  b.add_input<decl::Geometry>("Instance").description("Geometry that is instanced on the points");
-  b.add_input<decl::Bool>("Pick Instance")
+  b.add_input<decl::Geometry>(N_("Points")).description(N_("Points to instance on"));
+  b.add_input<decl::Bool>(N_("Selection")).default_value(true).supports_field().hide_value();
+  b.add_input<decl::Geometry>(N_("Instance"))
+      .description(N_("Geometry that is instanced on the points"));
+  b.add_input<decl::Bool>(N_("Pick Instance"))
       .supports_field()
       .description("Place different instances on different points");
-  b.add_input<decl::Int>("Instance Index")
+  b.add_input<decl::Int>(N_("Instance Index"))
       .implicit_field()
-      .description(
+      .description(N_(
           "Index of the instance that used for each point. This is only used when Pick Instances "
-          "is on. By default the point index is used");
-  b.add_input<decl::Vector>("Rotation")
+          "is on. By default the point index is used"));
+  b.add_input<decl::Vector>(N_("Rotation"))
       .subtype(PROP_EULER)
       .supports_field()
-      .description("Rotation of the instances");
-  b.add_input<decl::Vector>("Scale")
+      .description(N_("Rotation of the instances"));
+  b.add_input<decl::Vector>(N_("Scale"))
       .default_value({1.0f, 1.0f, 1.0f})
       .subtype(PROP_XYZ)
       .supports_field()
-      .description("Scale of the instances");
-  b.add_input<decl::Int>("Stable ID")
-      .supports_field()
-      .description(
-          "ID for every instance that is used to identify it over time even when the number of "
-          "instances changes. Used for example for motion blur");
+      .description(N_("Scale of the instances"));
 
-  b.add_output<decl::Geometry>("Instances");
+  b.add_output<decl::Geometry>(N_("Instances"));
 }
 
 static void add_instances_from_component(InstancesComponent &dst_component,
@@ -82,7 +78,6 @@ static void add_instances_from_component(InstancesComponent &dst_component,
                                                                                   select_len);
   MutableSpan<float4x4> dst_transforms = dst_component.instance_transforms().slice(start_len,
                                                                                    select_len);
-  MutableSpan<int> dst_stable_ids = dst_component.instance_ids().slice(start_len, select_len);
 
   FieldEvaluator field_evaluator{field_context, domain_size};
   const VArray<bool> *pick_instance = nullptr;
@@ -91,12 +86,10 @@ static void add_instances_from_component(InstancesComponent &dst_component,
   const VArray<float3> *scales = nullptr;
   /* The evaluator could use the component's stable IDs as a destination directly, but only the
    * selected indices should be copied. */
-  const VArray<int> *stable_ids = nullptr;
   field_evaluator.add(params.get_input<Field<bool>>("Pick Instance"), &pick_instance);
   field_evaluator.add(params.get_input<Field<int>>("Instance Index"), &indices);
   field_evaluator.add(params.get_input<Field<float3>>("Rotation"), &rotations);
   field_evaluator.add(params.get_input<Field<float3>>("Scale"), &scales);
-  field_evaluator.add(params.get_input<Field<int>>("Stable ID"), &stable_ids);
   field_evaluator.evaluate();
 
   GVArray_Typed<float3> positions = src_component.attribute_get_for_read<float3>(
@@ -125,7 +118,6 @@ static void add_instances_from_component(InstancesComponent &dst_component,
   threading::parallel_for(selection.index_range(), 1024, [&](IndexRange selection_range) {
     for (const int range_i : selection_range) {
       const int64_t i = selection[range_i];
-      dst_stable_ids[range_i] = (*stable_ids)[i];
 
       /* Compute base transform for every instances. */
       float4x4 &dst_transform = dst_transforms[range_i];
@@ -162,6 +154,17 @@ static void add_instances_from_component(InstancesComponent &dst_component,
       dst_handles[range_i] = dst_handle;
     }
   });
+
+  GVArrayPtr id_attribute = src_component.attribute_try_get_for_read(
+      "id", ATTR_DOMAIN_POINT, CD_PROP_INT32);
+  if (id_attribute) {
+    GVArray_Typed<int> ids{*id_attribute};
+    VArray_Span<int> ids_span{ids};
+    MutableSpan<int> dst_ids = dst_component.instance_ids_ensure();
+    for (const int64_t i : selection.index_range()) {
+      dst_ids[i] = ids_span[selection[i]];
+    }
+  }
 
   if (pick_instance->is_single()) {
     if (pick_instance->get_internal_single()) {
@@ -200,10 +203,14 @@ static void geo_node_instance_on_points_exec(GeoNodeExecParams params)
           instances, *geometry_set.get_component_for_read<CurveComponent>(), instance, params);
       geometry_set.remove(GEO_COMPONENT_TYPE_CURVE);
     }
-    /* Unused references may have been added above. Remove those now so that other nodes don't
-     * process them needlessly. */
-    instances.remove_unused_references();
   });
+
+  /* Unused references may have been added above. Remove those now so that other nodes don't
+   * process them needlessly.
+   * This should eventually be moved into the loop above, but currently this is quite tricky
+   * because it might remove references that the loop still wants to iterate over. */
+  InstancesComponent &instances = geometry_set.get_component_for_write<InstancesComponent>();
+  instances.remove_unused_references();
 
   params.set_output("Instances", std::move(geometry_set));
 }

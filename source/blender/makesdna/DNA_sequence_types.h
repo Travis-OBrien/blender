@@ -180,8 +180,7 @@ typedef struct Sequence {
   int startdisp, enddisp;
   float sat;
   float mul;
-  char tmp_tag;
-  char _pad[3];
+  float _pad;
 
   short anim_preseek; /* UNUSED. */
   /** Streamindex for movie or sound files with several streams. */
@@ -378,7 +377,7 @@ typedef struct TextVars {
   char text[512];
   struct VFont *text_font;
   int text_blf_id;
-  int text_size;
+  float text_size;
   float color[4], shadow_color[4], box_color[4];
   float loc[2];
   float wrap_width;

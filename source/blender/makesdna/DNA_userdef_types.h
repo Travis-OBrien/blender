@@ -69,8 +69,9 @@ typedef struct uiFont {
 typedef struct uiFontStyle {
   /** Saved in file, 0 is default. */
   short uifont_id;
+  char _pad1[2];
   /** Actual size depends on 'global' dpi. */
-  short points;
+  float points;
   /** Style hint. */
   short italic, bold;
   /** Value is amount of pixels blur. */
@@ -82,6 +83,7 @@ typedef struct uiFontStyle {
   float shadowalpha;
   /** 1 value, typically white or black anyway. */
   float shadowcolor;
+  char _pad2[4];
 } uiFontStyle;
 
 /* this is fed to the layout engine and widget code */
@@ -650,6 +652,7 @@ typedef struct UserDef_Experimental {
   char no_proxy_to_override_conversion;
   char use_cycles_debug;
   char use_geometry_nodes_legacy;
+  char show_asset_debug_info;
   char SANITIZE_AFTER_HERE;
   /* The following options are automatically sanitized (set to 0)
    * when the release cycle is not alpha. */
@@ -660,7 +663,7 @@ typedef struct UserDef_Experimental {
   char use_sculpt_tools_tilt;
   char use_extended_asset_browser;
   char use_override_templates;
-  char _pad[3];
+  char _pad[2];
   /** `makesdna` does not allow empty structs. */
 } UserDef_Experimental;
 

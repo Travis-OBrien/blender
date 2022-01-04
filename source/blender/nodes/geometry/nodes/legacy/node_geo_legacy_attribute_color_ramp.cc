@@ -40,8 +40,7 @@ static void node_layout(uiLayout *layout, bContext *UNUSED(C), PointerRNA *ptr)
 
 static void node_init(bNodeTree *UNUSED(ntree), bNode *node)
 {
-  NodeAttributeColorRamp *node_storage = (NodeAttributeColorRamp *)MEM_callocN(
-      sizeof(NodeAttributeColorRamp), __func__);
+  NodeAttributeColorRamp *node_storage = MEM_cnew<NodeAttributeColorRamp>(__func__);
   BKE_colorband_init(&node_storage->color_ramp, true);
   node->storage = node_storage;
 }
@@ -102,7 +101,7 @@ static void node_geo_exec(GeoNodeExecParams params)
 {
   GeometrySet geometry_set = params.extract_input<GeometrySet>("Geometry");
 
-  geometry_set = geometry_set_realize_instances(geometry_set);
+  geometry_set = geometry::realize_instances_legacy(geometry_set);
 
   if (geometry_set.has<MeshComponent>()) {
     execute_on_component(params, geometry_set.get_component_for_write<MeshComponent>());
@@ -125,11 +124,8 @@ void register_node_type_geo_attribute_color_ramp()
 
   static bNodeType ntype;
 
-  geo_node_type_base(&ntype,
-                     GEO_NODE_LEGACY_ATTRIBUTE_COLOR_RAMP,
-                     "Attribute Color Ramp",
-                     NODE_CLASS_ATTRIBUTE,
-                     0);
+  geo_node_type_base(
+      &ntype, GEO_NODE_LEGACY_ATTRIBUTE_COLOR_RAMP, "Attribute Color Ramp", NODE_CLASS_ATTRIBUTE);
   node_type_storage(
       &ntype, "NodeAttributeColorRamp", node_free_standard_storage, node_copy_standard_storage);
   node_type_init(&ntype, file_ns::node_init);

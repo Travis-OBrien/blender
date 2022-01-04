@@ -25,6 +25,8 @@
 
 #include "node_shader_util.h"
 
+#include "NOD_socket_search_link.hh"
+
 #include "node_exec.h"
 
 bool sh_node_poll_default(bNodeType *UNUSED(ntype), bNodeTree *ntree, const char **r_disabled_hint)
@@ -47,19 +49,20 @@ static bool sh_fn_poll_default(bNodeType *UNUSED(ntype),
   return true;
 }
 
-void sh_node_type_base(
-    struct bNodeType *ntype, int type, const char *name, short nclass, short flag)
+void sh_node_type_base(struct bNodeType *ntype, int type, const char *name, short nclass)
 {
-  node_type_base(ntype, type, name, nclass, flag);
+  node_type_base(ntype, type, name, nclass);
 
   ntype->poll = sh_node_poll_default;
   ntype->insert_link = node_insert_link_default;
+  ntype->gather_link_search_ops = blender::nodes::search_link_ops_for_basic_node;
 }
 
-void sh_fn_node_type_base(bNodeType *ntype, int type, const char *name, short nclass, short flag)
+void sh_fn_node_type_base(bNodeType *ntype, int type, const char *name, short nclass)
 {
-  sh_node_type_base(ntype, type, name, nclass, flag);
+  sh_node_type_base(ntype, type, name, nclass);
   ntype->poll = sh_fn_poll_default;
+  ntype->gather_link_search_ops = blender::nodes::search_link_ops_for_basic_node;
 }
 
 /* ****** */

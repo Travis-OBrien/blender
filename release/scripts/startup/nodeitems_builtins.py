@@ -66,7 +66,7 @@ class GeometryNodeCategory(SortedNodeCategory):
 
 
 # menu entry for node group tools
-def group_tools_draw(self, layout, _context):
+def group_tools_draw(_self, layout, _context):
     layout.operator("node.group_make")
     layout.operator("node.group_ungroup")
     layout.separator()
@@ -501,6 +501,7 @@ compositor_node_categories = [
         NodeItem("CompositorNodeTexture"),
         NodeItem("CompositorNodeBokehImage"),
         NodeItem("CompositorNodeTime"),
+        NodeItem("CompositorNodeSceneTime"),
         NodeItem("CompositorNodeTrackPos"),
     ]),
     CompositorNodeCategory("CMP_OUTPUT", "Output", items=[
@@ -542,6 +543,7 @@ compositor_node_categories = [
         NodeItem("CompositorNodeSepYCCA"),
         NodeItem("CompositorNodeCombYCCA"),
         NodeItem("CompositorNodeSwitchView"),
+        NodeItem("CompositorNodeConvertColorSpace"),
     ]),
     CompositorNodeCategory("CMP_OP_FILTER", "Filter", items=[
         NodeItem("CompositorNodeBlur"),

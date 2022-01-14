@@ -23,6 +23,7 @@
 #include "DNA_scene_types.h"
 
 #include "BKE_editmesh.h"
+#include "BKE_mesh.h"
 #include "BKE_modifier.h"
 #include "BKE_object.h"
 #include "BKE_scene.h"
@@ -258,10 +259,11 @@ static GPUShader *get_patch_evaluation_shader(int shader_type)
 
 static GPUShader *get_subdiv_shader(int shader_type, const char *defines)
 {
-  if (shader_type == SHADER_PATCH_EVALUATION ||
-      shader_type == SHADER_PATCH_EVALUATION_LIMIT_NORMALS ||
-      shader_type == SHADER_PATCH_EVALUATION_FVAR ||
-      shader_type == SHADER_PATCH_EVALUATION_FACE_DOTS) {
+  if (ELEM(shader_type,
+           SHADER_PATCH_EVALUATION,
+           SHADER_PATCH_EVALUATION_LIMIT_NORMALS,
+           SHADER_PATCH_EVALUATION_FVAR,
+           SHADER_PATCH_EVALUATION_FACE_DOTS)) {
     return get_patch_evaluation_shader(shader_type);
   }
   if (g_subdiv_shaders[shader_type] == nullptr) {
@@ -1667,6 +1669,7 @@ void draw_subdiv_init_mesh_render_data(DRWSubdivCache *cache,
   mr->mvert = mesh->mvert;
   mr->mpoly = mesh->mpoly;
   mr->mloop = mesh->mloop;
+  mr->vert_normals = BKE_mesh_vertex_normals_ensure(mesh);
   mr->vert_len = mesh->totvert;
   mr->edge_len = mesh->totedge;
   mr->poly_len = mesh->totpoly;

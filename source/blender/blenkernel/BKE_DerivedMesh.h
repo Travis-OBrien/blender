@@ -376,7 +376,7 @@ void DM_interp_vert_data(struct DerivedMesh *source,
                          int count,
                          int dest_index);
 
-void mesh_get_mapped_verts_coords(struct Mesh *me_eval, float (*r_cos)[3], const int totcos);
+void mesh_get_mapped_verts_coords(struct Mesh *me_eval, float (*r_cos)[3], int totcos);
 
 /**
  * Same as above but won't use render settings.
@@ -390,12 +390,6 @@ struct Mesh *editbmesh_get_eval_cage_from_orig(struct Depsgraph *depsgraph,
                                                struct Scene *scene,
                                                struct Object *obedit,
                                                const struct CustomData_MeshMasks *dataMask);
-struct Mesh *editbmesh_get_eval_cage_and_final(struct Depsgraph *depsgraph,
-                                               struct Scene *scene,
-                                               struct Object *,
-                                               struct BMEditMesh *em,
-                                               const struct CustomData_MeshMasks *dataMask,
-                                               struct Mesh **r_final);
 
 float (*editbmesh_vert_coords_alloc(struct BMEditMesh *em, int *r_vert_len))[3];
 bool editbmesh_modifier_is_enabled(struct Scene *scene,

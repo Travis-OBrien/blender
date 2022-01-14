@@ -308,7 +308,7 @@ struct FieldInputs {
  */
 class FieldContext {
  public:
-  ~FieldContext() = default;
+  virtual ~FieldContext() = default;
 
   virtual GVArray get_varray_for_input(const FieldInput &field_input,
                                        IndexMask mask,
@@ -448,7 +448,7 @@ class FieldEvaluator : NonMovable, NonCopyable {
    * to avoid calculations for unnecessary elements later on. The evaluator will own the indices in
    * some cases, so it must live at least as long as the returned mask.
    */
-  IndexMask get_evaluated_as_mask(const int field_index);
+  IndexMask get_evaluated_as_mask(int field_index);
 };
 
 /**

@@ -166,7 +166,11 @@ if(WITH_FFTW3)
   find_package(Fftw3)
 endif()
 
+# FreeType compiled with Brotli compression for woff2.
 find_package(Freetype REQUIRED)
+list(APPEND FREETYPE_LIBRARIES
+  ${LIBDIR}/brotli/lib/libbrotlicommon-static.a
+  ${LIBDIR}/brotli/lib/libbrotlidec-static.a)
 
 if(WITH_IMAGE_OPENEXR)
   find_package(OpenEXR)
@@ -480,8 +484,11 @@ string(APPEND PLATFORM_LINKFLAGS " -stdlib=libc++")
 # Suppress ranlib "has no symbols" warnings (workaround for T48250)
 set(CMAKE_C_ARCHIVE_CREATE   "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
 set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
-set(CMAKE_C_ARCHIVE_FINISH   "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
-set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+# llvm-ranlib doesn't support this flag. Xcode's libtool does.
+if(NOT ${CMAKE_RANLIB} MATCHES ".*llvm-ranlib$")
+  set(CMAKE_C_ARCHIVE_FINISH   "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+  set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+endif()
 
 if(WITH_COMPILER_CCACHE)
   if(NOT CMAKE_GENERATOR STREQUAL "Xcode")

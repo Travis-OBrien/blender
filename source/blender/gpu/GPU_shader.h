@@ -30,6 +30,8 @@ extern "C" {
 struct GPUIndexBuf;
 struct GPUVertBuf;
 
+/** Opaque type hiding #blender::gpu::shader::ShaderCreateInfo */
+typedef struct GPUShaderCreateInfo GPUShaderCreateInfo;
 /** Opaque type hiding #blender::gpu::Shader */
 typedef struct GPUShader GPUShader;
 
@@ -66,6 +68,8 @@ GPUShader *GPU_shader_create_ex(const char *vertcode,
                                 const char **tf_names,
                                 int tf_count,
                                 const char *shname);
+GPUShader *GPU_shader_create_from_info(const GPUShaderCreateInfo *_info);
+GPUShader *GPU_shader_create_from_info_name(const char *info_name);
 
 struct GPU_ShaderCreateFromArray_Params {
   const char **vert, **geom, **frag, **defs;

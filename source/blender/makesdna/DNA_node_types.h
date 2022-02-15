@@ -1,21 +1,5 @@
-/*
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * The Original Code is Copyright (C) 2005 Blender Foundation.
- * All rights reserved.
- */
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright 2005 Blender Foundation. All rights reserved. */
 
 /** \file
  * \ingroup DNA
@@ -514,8 +498,10 @@ typedef struct bNodeTree {
   /** Information about how inputs and outputs of the node group interact with fields. */
   FieldInferencingInterfaceHandle *field_inferencing_interface;
 
-  /** Set init on fileread. */
-  int type, init;
+  int type;
+
+  char _pad1[4];
+
   /**
    * Sockets in groups have unique identifiers, adding new sockets always
    * will increase this counter.
@@ -598,9 +584,6 @@ typedef struct bNodeTree {
 #define NTREE_COMPOSIT 1
 #define NTREE_TEXTURE 2
 #define NTREE_GEOMETRY 3
-
-/** #NodeTree.init, flag */
-#define NTREE_TYPE_INIT 1
 
 /** #NodeTree.flag */
 #define NTREE_DS_EXPAND (1 << 0)            /* for animation editors */
@@ -1616,7 +1599,8 @@ typedef struct NodeGeometryStringToCurves {
   uint8_t align_x;
   /* GeometryNodeStringToCurvesAlignYMode */
   uint8_t align_y;
-  char _pad[1];
+  /* GeometryNodeStringToCurvesPivotMode */
+  uint8_t pivot_mode;
 } NodeGeometryStringToCurves;
 
 typedef struct NodeGeometryDeleteGeometry {
@@ -2343,6 +2327,16 @@ typedef enum GeometryNodeStringToCurvesAlignYMode {
   GEO_NODE_STRING_TO_CURVES_ALIGN_Y_BOTTOM_BASELINE = 3,
   GEO_NODE_STRING_TO_CURVES_ALIGN_Y_BOTTOM = 4,
 } GeometryNodeStringToCurvesAlignYMode;
+
+typedef enum GeometryNodeStringToCurvesPivotMode {
+  GEO_NODE_STRING_TO_CURVES_PIVOT_MODE_MIDPOINT = 0,
+  GEO_NODE_STRING_TO_CURVES_PIVOT_MODE_TOP_LEFT = 1,
+  GEO_NODE_STRING_TO_CURVES_PIVOT_MODE_TOP_CENTER = 2,
+  GEO_NODE_STRING_TO_CURVES_PIVOT_MODE_TOP_RIGHT = 3,
+  GEO_NODE_STRING_TO_CURVES_PIVOT_MODE_BOTTOM_LEFT = 4,
+  GEO_NODE_STRING_TO_CURVES_PIVOT_MODE_BOTTOM_CENTER = 5,
+  GEO_NODE_STRING_TO_CURVES_PIVOT_MODE_BOTTOM_RIGHT = 6,
+} GeometryNodeStringToCurvesPivotMode;
 
 typedef enum GeometryNodeDeleteGeometryMode {
   GEO_NODE_DELETE_GEOMETRY_MODE_ALL = 0,

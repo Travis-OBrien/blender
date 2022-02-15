@@ -1,21 +1,5 @@
-/*
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * The Original Code is Copyright (C) 2001-2002 by NaN Holding BV.
- * All rights reserved.
- */
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright 2001-2002 NaN Holding BV. All rights reserved. */
 
 /** \file
  * \ingroup imbuf
@@ -993,21 +977,23 @@ static int ffmpeg_seek_by_byte(AVFormatContext *pFormatCtx)
   return false;
 }
 
-static int64_t ffmpeg_get_seek_pts(struct anim *anim, int64_t pts_to_search)
+static double ffmpeg_steps_per_frame_get(struct anim *anim)
 {
   AVStream *v_st = anim->pFormatCtx->streams[anim->videoStream];
-  AVRational frame_rate = v_st->r_frame_rate;
   AVRational time_base = v_st->time_base;
-  double steps_per_frame = (double)(frame_rate.den * time_base.den) /
-                           (double)(frame_rate.num * time_base.num);
+  AVRational frame_rate = av_guess_frame_rate(anim->pFormatCtx, v_st, NULL);
+  return av_q2d(av_inv_q(av_mul_q(frame_rate, time_base)));
+  ;
+}
+
+static int64_t ffmpeg_get_seek_pts(struct anim *anim, int64_t pts_to_search)
+{
   /* Step back half a frame position to make sure that we get the requested
    * frame and not the one after it. This is a workaround as ffmpeg will
    * sometimes not seek to a frame after the requested pts even if
    * AVSEEK_FLAG_BACKWARD is specified.
    */
-  int64_t pts = pts_to_search - (steps_per_frame / 2);
-
-  return pts;
+  return pts_to_search - (ffmpeg_steps_per_frame_get(anim) / 2);
 }
 
 /* This gives us an estimate of which pts our requested frame will have.
@@ -1026,13 +1012,8 @@ static int64_t ffmpeg_get_pts_to_search(struct anim *anim,
   else {
     AVStream *v_st = anim->pFormatCtx->streams[anim->videoStream];
     int64_t start_pts = v_st->start_time;
-    AVRational frame_rate = v_st->r_frame_rate;
-    AVRational time_base = v_st->time_base;
 
-    double steps_per_frame = (double)(frame_rate.den * time_base.den) /
-                             (double)(frame_rate.num * time_base.num);
-
-    pts_to_search = round(position * steps_per_frame);
+    pts_to_search = round(position * ffmpeg_steps_per_frame_get(anim));
 
     if (start_pts != AV_NOPTS_VALUE) {
       pts_to_search += start_pts;
@@ -1122,13 +1103,6 @@ static int ffmpeg_generic_seek_workaround(struct anim *anim,
                                           int64_t *requested_pts,
                                           int64_t pts_to_search)
 {
-  AVStream *v_st = anim->pFormatCtx->streams[anim->videoStream];
-  AVRational frame_rate = v_st->r_frame_rate;
-  AVRational time_base = v_st->time_base;
-
-  double steps_per_frame = (double)(frame_rate.den * time_base.den) /
-                           (double)(frame_rate.num * time_base.num);
-
   int64_t current_pts = *requested_pts;
   int64_t offset = 0;
 
@@ -1136,7 +1110,7 @@ static int ffmpeg_generic_seek_workaround(struct anim *anim,
 
   /* Step backward frame by frame until we find the key frame we are looking for. */
   while (current_pts != 0) {
-    current_pts = *requested_pts - (int64_t)round(offset * steps_per_frame);
+    current_pts = *requested_pts - (int64_t)round(offset * ffmpeg_steps_per_frame_get(anim));
     current_pts = MAX2(current_pts, 0);
 
     /* Seek to timestamp. */

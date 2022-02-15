@@ -1,21 +1,5 @@
-/*
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * The Original Code is Copyright (C) 2005 Blender Foundation.
- * All rights reserved.
- */
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright 2005 Blender Foundation. All rights reserved. */
 
 /** \file
  * \ingroup bke
@@ -127,30 +111,6 @@ static MEdge *dm_getEdgeArray(DerivedMesh *dm)
   return medge;
 }
 
-static MFace *dm_getTessFaceArray(DerivedMesh *dm)
-{
-  MFace *mface = (MFace *)CustomData_get_layer(&dm->faceData, CD_MFACE);
-
-  if (!mface) {
-    int numTessFaces = dm->getNumTessFaces(dm);
-
-    if (!numTessFaces) {
-      /* Do not add layer if there's no elements in it, this leads to issues later when
-       * this layer is needed with non-zero size, but currently CD stuff does not check
-       * for requested layer size on creation and just returns layer which was previously
-       * added (sergey) */
-      return nullptr;
-    }
-
-    mface = (MFace *)CustomData_add_layer(
-        &dm->faceData, CD_MFACE, CD_CALLOC, nullptr, numTessFaces);
-    CustomData_set_layer_flag(&dm->faceData, CD_MFACE, CD_FLAG_TEMPORARY);
-    dm->copyTessFaceArray(dm, mface);
-  }
-
-  return mface;
-}
-
 static MLoop *dm_getLoopArray(DerivedMesh *dm)
 {
   MLoop *mloop = (MLoop *)CustomData_get_layer(&dm->loopData, CD_MLOOP);
@@ -198,18 +158,6 @@ static MEdge *dm_dupEdgeArray(DerivedMesh *dm)
 
   if (tmp) {
     dm->copyEdgeArray(dm, tmp);
-  }
-
-  return tmp;
-}
-
-static MFace *dm_dupFaceArray(DerivedMesh *dm)
-{
-  MFace *tmp = (MFace *)MEM_malloc_arrayN(
-      dm->getNumTessFaces(dm), sizeof(*tmp), "dm_dupFaceArray tmp");
-
-  if (tmp) {
-    dm->copyTessFaceArray(dm, tmp);
   }
 
   return tmp;
@@ -270,42 +218,15 @@ static const MLoopTri *dm_getLoopTriArray(DerivedMesh *dm)
   return looptri;
 }
 
-static CustomData *dm_getVertCData(DerivedMesh *dm)
-{
-  return &dm->vertData;
-}
-
-static CustomData *dm_getEdgeCData(DerivedMesh *dm)
-{
-  return &dm->edgeData;
-}
-
-static CustomData *dm_getTessFaceCData(DerivedMesh *dm)
-{
-  return &dm->faceData;
-}
-
-static CustomData *dm_getLoopCData(DerivedMesh *dm)
-{
-  return &dm->loopData;
-}
-
-static CustomData *dm_getPolyCData(DerivedMesh *dm)
-{
-  return &dm->polyData;
-}
-
 void DM_init_funcs(DerivedMesh *dm)
 {
   /* default function implementations */
   dm->getVertArray = dm_getVertArray;
   dm->getEdgeArray = dm_getEdgeArray;
-  dm->getTessFaceArray = dm_getTessFaceArray;
   dm->getLoopArray = dm_getLoopArray;
   dm->getPolyArray = dm_getPolyArray;
   dm->dupVertArray = dm_dupVertArray;
   dm->dupEdgeArray = dm_dupEdgeArray;
-  dm->dupTessFaceArray = dm_dupFaceArray;
   dm->dupLoopArray = dm_dupLoopArray;
   dm->dupPolyArray = dm_dupPolyArray;
 
@@ -314,19 +235,8 @@ void DM_init_funcs(DerivedMesh *dm)
   /* subtypes handle getting actual data */
   dm->getNumLoopTri = dm_getNumLoopTri;
 
-  dm->getVertDataLayout = dm_getVertCData;
-  dm->getEdgeDataLayout = dm_getEdgeCData;
-  dm->getTessFaceDataLayout = dm_getTessFaceCData;
-  dm->getLoopDataLayout = dm_getLoopCData;
-  dm->getPolyDataLayout = dm_getPolyCData;
-
-  dm->getVertData = DM_get_vert_data;
-  dm->getEdgeData = DM_get_edge_data;
-  dm->getTessFaceData = DM_get_tessface_data;
-  dm->getPolyData = DM_get_poly_data;
   dm->getVertDataArray = DM_get_vert_data_layer;
   dm->getEdgeDataArray = DM_get_edge_data_layer;
-  dm->getTessFaceDataArray = DM_get_tessface_data_layer;
   dm->getPolyDataArray = DM_get_poly_data_layer;
   dm->getLoopDataArray = DM_get_loop_data_layer;
 }
@@ -349,7 +259,6 @@ void DM_init(DerivedMesh *dm,
   DM_init_funcs(dm);
 
   dm->needsFree = 1;
-  dm->dirty = (DMDirtyFlag)0;
 
   /* Don't use #CustomData_reset because we don't want to touch custom-data. */
   copy_vn_i(dm->vertData.typemap, CD_NUMTYPES, -1);
@@ -359,16 +268,16 @@ void DM_init(DerivedMesh *dm,
   copy_vn_i(dm->polyData.typemap, CD_NUMTYPES, -1);
 }
 
-void DM_from_template_ex(DerivedMesh *dm,
-                         DerivedMesh *source,
-                         DerivedMeshType type,
-                         int numVerts,
-                         int numEdges,
-                         int numTessFaces,
-                         int numLoops,
-                         int numPolys,
-                         const CustomData_MeshMasks *mask)
+void DM_from_template(DerivedMesh *dm,
+                      DerivedMesh *source,
+                      DerivedMeshType type,
+                      int numVerts,
+                      int numEdges,
+                      int numTessFaces,
+                      int numLoops,
+                      int numPolys)
 {
+  const CustomData_MeshMasks *mask = &CD_MASK_DERIVEDMESH;
   CustomData_copy(&source->vertData, &dm->vertData, mask->vmask, CD_CALLOC, numVerts);
   CustomData_copy(&source->edgeData, &dm->edgeData, mask->emask, CD_CALLOC, numEdges);
   CustomData_copy(&source->faceData, &dm->faceData, mask->fmask, CD_CALLOC, numTessFaces);
@@ -387,26 +296,6 @@ void DM_from_template_ex(DerivedMesh *dm,
   DM_init_funcs(dm);
 
   dm->needsFree = 1;
-  dm->dirty = (DMDirtyFlag)0;
-}
-void DM_from_template(DerivedMesh *dm,
-                      DerivedMesh *source,
-                      DerivedMeshType type,
-                      int numVerts,
-                      int numEdges,
-                      int numTessFaces,
-                      int numLoops,
-                      int numPolys)
-{
-  DM_from_template_ex(dm,
-                      source,
-                      type,
-                      numVerts,
-                      numEdges,
-                      numTessFaces,
-                      numLoops,
-                      numPolys,
-                      &CD_MASK_DERIVEDMESH);
 }
 
 bool DM_release(DerivedMesh *dm)
@@ -464,14 +353,6 @@ void DM_DupPolys(DerivedMesh *source, DerivedMesh *target)
   }
 }
 
-void DM_ensure_normals(DerivedMesh *dm)
-{
-  if (dm->dirty & DM_DIRTY_NORMALS) {
-    dm->calcNormals(dm);
-  }
-  BLI_assert((dm->dirty & DM_DIRTY_NORMALS) == 0);
-}
-
 void DM_ensure_looptri_data(DerivedMesh *dm)
 {
   const unsigned int totpoly = dm->numPolyData;
@@ -524,7 +405,7 @@ void DM_set_only_copy(DerivedMesh *dm, const CustomData_MeshMasks *mask)
    * see replies to r50969, Campbell */
 #if 0
   CustomData_set_only_copy(&dm->loopData, mask->lmask);
-  CustomData_set_only_copy(&dm->polyData, mask->pmask);
+  Custom(&dm->polyData, mask->pmask);
 #endif
 }
 
@@ -552,43 +433,9 @@ void DM_add_edge_layer(DerivedMesh *dm, int type, eCDAllocType alloctype, void *
   CustomData_add_layer(&dm->edgeData, type, alloctype, layer, dm->numEdgeData);
 }
 
-void DM_add_tessface_layer(DerivedMesh *dm, int type, eCDAllocType alloctype, void *layer)
-{
-  CustomData_add_layer(&dm->faceData, type, alloctype, layer, dm->numTessFaceData);
-}
-
-void DM_add_loop_layer(DerivedMesh *dm, int type, eCDAllocType alloctype, void *layer)
-{
-  CustomData_add_layer(&dm->loopData, type, alloctype, layer, dm->numLoopData);
-}
-
 void DM_add_poly_layer(DerivedMesh *dm, int type, eCDAllocType alloctype, void *layer)
 {
   CustomData_add_layer(&dm->polyData, type, alloctype, layer, dm->numPolyData);
-}
-
-void *DM_get_vert_data(DerivedMesh *dm, int index, int type)
-{
-  BLI_assert(index >= 0 && index < dm->getNumVerts(dm));
-  return CustomData_get(&dm->vertData, index, type);
-}
-
-void *DM_get_edge_data(DerivedMesh *dm, int index, int type)
-{
-  BLI_assert(index >= 0 && index < dm->getNumEdges(dm));
-  return CustomData_get(&dm->edgeData, index, type);
-}
-
-void *DM_get_tessface_data(DerivedMesh *dm, int index, int type)
-{
-  BLI_assert(index >= 0 && index < dm->getNumTessFaces(dm));
-  return CustomData_get(&dm->faceData, index, type);
-}
-
-void *DM_get_poly_data(DerivedMesh *dm, int index, int type)
-{
-  BLI_assert(index >= 0 && index < dm->getNumPolys(dm));
-  return CustomData_get(&dm->polyData, index, type);
 }
 
 void *DM_get_vert_data_layer(DerivedMesh *dm, int type)
@@ -607,15 +454,6 @@ void *DM_get_edge_data_layer(DerivedMesh *dm, int type)
   }
 
   return CustomData_get_layer(&dm->edgeData, type);
-}
-
-void *DM_get_tessface_data_layer(DerivedMesh *dm, int type)
-{
-  if (type == CD_MFACE) {
-    return dm->getTessFaceArray(dm);
-  }
-
-  return CustomData_get_layer(&dm->faceData, type);
 }
 
 void *DM_get_poly_data_layer(DerivedMesh *dm, int type)
@@ -884,7 +722,7 @@ static Mesh *modifier_modify_mesh_and_geometry_set(ModifierData *md,
 }
 
 static void mesh_calc_modifiers(struct Depsgraph *depsgraph,
-                                Scene *scene,
+                                const Scene *scene,
                                 Object *ob,
                                 const bool use_deform,
                                 const bool need_mapping,
@@ -1402,7 +1240,7 @@ float (*editbmesh_vert_coords_alloc(BMEditMesh *em, int *r_vert_len))[3]
   return cos;
 }
 
-bool editbmesh_modifier_is_enabled(Scene *scene,
+bool editbmesh_modifier_is_enabled(const Scene *scene,
                                    const Object *ob,
                                    ModifierData *md,
                                    bool has_prev_mesh)
@@ -1463,7 +1301,7 @@ static void editbmesh_calc_modifier_final_normals(Mesh *mesh_final,
 }
 
 static void editbmesh_calc_modifiers(struct Depsgraph *depsgraph,
-                                     Scene *scene,
+                                     const Scene *scene,
                                      Object *ob,
                                      BMEditMesh *em_input,
                                      const CustomData_MeshMasks *dataMask,
@@ -1731,13 +1569,6 @@ static void editbmesh_calc_modifiers(struct Depsgraph *depsgraph,
     BKE_id_free(nullptr, mesh_orco);
   }
 
-  /* Ensure normals calculation below is correct (normal settings have transferred properly).
-   * However, nodes modifiers might create meshes from scratch or transfer meshes from other
-   * objects with different settings, and in general it doesn't make sense to guarantee that
-   * the settings are the same as the original mesh. If necessary, this could become a modifier
-   * type flag. */
-  BLI_assert(mesh_input->smoothresh == mesh_cage->smoothresh);
-
   /* Compute normals. */
   editbmesh_calc_modifier_final_normals(mesh_final, &final_datamask);
   if (mesh_cage && (mesh_cage != mesh_final)) {
@@ -1764,7 +1595,7 @@ static void mesh_build_extra_data(struct Depsgraph *depsgraph, Object *ob, Mesh 
 }
 
 static void mesh_build_data(struct Depsgraph *depsgraph,
-                            Scene *scene,
+                            const Scene *scene,
                             Object *ob,
                             const CustomData_MeshMasks *dataMask,
                             const bool need_mapping)
@@ -1830,7 +1661,7 @@ static void mesh_build_data(struct Depsgraph *depsgraph,
 }
 
 static void editbmesh_build_data(struct Depsgraph *depsgraph,
-                                 Scene *scene,
+                                 const Scene *scene,
                                  Object *obedit,
                                  BMEditMesh *em,
                                  CustomData_MeshMasks *dataMask)
@@ -1923,7 +1754,7 @@ static void object_get_datamask(const Depsgraph *depsgraph,
 }
 
 void makeDerivedMesh(struct Depsgraph *depsgraph,
-                     Scene *scene,
+                     const Scene *scene,
                      Object *ob,
                      const CustomData_MeshMasks *dataMask)
 {
@@ -1959,7 +1790,7 @@ void makeDerivedMesh(struct Depsgraph *depsgraph,
 /***/
 
 Mesh *mesh_get_eval_final(struct Depsgraph *depsgraph,
-                          Scene *scene,
+                          const Scene *scene,
                           Object *ob,
                           const CustomData_MeshMasks *dataMask)
 {
@@ -1995,7 +1826,7 @@ Mesh *mesh_get_eval_final(struct Depsgraph *depsgraph,
 }
 
 Mesh *mesh_get_eval_deform(struct Depsgraph *depsgraph,
-                           Scene *scene,
+                           const Scene *scene,
                            Object *ob,
                            const CustomData_MeshMasks *dataMask)
 {
@@ -2035,7 +1866,7 @@ Mesh *mesh_get_eval_deform(struct Depsgraph *depsgraph,
 }
 
 Mesh *mesh_create_eval_final(Depsgraph *depsgraph,
-                             Scene *scene,
+                             const Scene *scene,
                              Object *ob,
                              const CustomData_MeshMasks *dataMask)
 {
@@ -2046,7 +1877,7 @@ Mesh *mesh_create_eval_final(Depsgraph *depsgraph,
 }
 
 Mesh *mesh_create_eval_no_deform(Depsgraph *depsgraph,
-                                 Scene *scene,
+                                 const Scene *scene,
                                  Object *ob,
                                  const CustomData_MeshMasks *dataMask)
 {
@@ -2057,7 +1888,7 @@ Mesh *mesh_create_eval_no_deform(Depsgraph *depsgraph,
 }
 
 Mesh *mesh_create_eval_no_deform_render(Depsgraph *depsgraph,
-                                        Scene *scene,
+                                        const Scene *scene,
                                         Object *ob,
                                         const CustomData_MeshMasks *dataMask)
 {
@@ -2070,7 +1901,7 @@ Mesh *mesh_create_eval_no_deform_render(Depsgraph *depsgraph,
 /***/
 
 Mesh *editbmesh_get_eval_cage(struct Depsgraph *depsgraph,
-                              Scene *scene,
+                              const Scene *scene,
                               Object *obedit,
                               BMEditMesh *em,
                               const CustomData_MeshMasks *dataMask)
@@ -2091,12 +1922,12 @@ Mesh *editbmesh_get_eval_cage(struct Depsgraph *depsgraph,
 }
 
 Mesh *editbmesh_get_eval_cage_from_orig(struct Depsgraph *depsgraph,
-                                        Scene *scene,
+                                        const Scene *scene,
                                         Object *obedit,
                                         const CustomData_MeshMasks *dataMask)
 {
   BLI_assert((obedit->id.tag & LIB_TAG_COPIED_ON_WRITE) == 0);
-  Scene *scene_eval = (Scene *)DEG_get_evaluated_id(depsgraph, &scene->id);
+  const Scene *scene_eval = (const Scene *)DEG_get_evaluated_id(depsgraph, (ID *)&scene->id);
   Object *obedit_eval = (Object *)DEG_get_evaluated_id(depsgraph, &obedit->id);
   BMEditMesh *em_eval = BKE_editmesh_from_object(obedit_eval);
   return editbmesh_get_eval_cage(depsgraph, scene_eval, obedit_eval, em_eval, dataMask);
@@ -2142,32 +1973,6 @@ void mesh_get_mapped_verts_coords(Mesh *me_eval, float (*r_cos)[3], const int to
       copy_v3_v3(r_cos[i], mv->co);
     }
   }
-}
-
-void DM_calc_loop_tangents(DerivedMesh *dm,
-                           bool calc_active_tangent,
-                           const char (*tangent_names)[MAX_NAME],
-                           int tangent_names_len)
-{
-  BKE_mesh_calc_loop_tangent_ex(
-      dm->getVertArray(dm),
-      dm->getPolyArray(dm),
-      dm->getNumPolys(dm),
-      dm->getLoopArray(dm),
-      dm->getLoopTriArray(dm),
-      dm->getNumLoopTri(dm),
-      &dm->loopData,
-      calc_active_tangent,
-      tangent_names,
-      tangent_names_len,
-      (const float(*)[3])CustomData_get_layer(&dm->vertData, CD_NORMAL),
-      (const float(*)[3])CustomData_get_layer(&dm->polyData, CD_NORMAL),
-      (const float(*)[3])dm->getLoopDataArray(dm, CD_NORMAL),
-      (const float(*)[3])dm->getVertDataArray(dm, CD_ORCO), /* may be nullptr */
-      /* result */
-      &dm->loopData,
-      dm->getNumLoops(dm),
-      &dm->tangent_mask);
 }
 
 static void mesh_init_origspace(Mesh *mesh)

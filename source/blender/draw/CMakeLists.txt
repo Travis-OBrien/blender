@@ -1,22 +1,5 @@
-# ***** BEGIN GPL LICENSE BLOCK *****
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software Foundation,
-# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-#
-# The Original Code is Copyright (C) 2016, Blender Foundation
-# All rights reserved.
-# ***** END GPL LICENSE BLOCK *****
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright 2016 Blender Foundation. All rights reserved.
 
 set(INC
   .
@@ -45,6 +28,7 @@ set(INC
   ../../../intern/glew-mx
   ../../../intern/guardedalloc
   ../../../intern/opensubdiv
+  ../../../intern/clog
 
   # dna_type_offsets.h
   ${CMAKE_CURRENT_BINARY_DIR}/../makesdna/intern
@@ -85,9 +69,9 @@ set(SRC
   intern/mesh_extractors/extract_mesh_vbo_vcol.cc
   intern/mesh_extractors/extract_mesh_vbo_weights.cc
   intern/draw_cache_impl_curve.cc
+  intern/draw_cache_impl_curves.cc
   intern/draw_cache_impl_displist.c
   intern/draw_cache_impl_gpencil.c
-  intern/draw_cache_impl_hair.cc
   intern/draw_cache_impl_lattice.c
   intern/draw_cache_impl_mesh.c
   intern/draw_cache_impl_metaball.c
@@ -154,7 +138,7 @@ set(SRC
   engines/workbench/workbench_materials.c
   engines/workbench/workbench_opaque.c
   engines/workbench/workbench_render.c
-  engines/workbench/workbench_shader.c
+  engines/workbench/workbench_shader.cc
   engines/workbench/workbench_shadow.c
   engines/workbench/workbench_transparent.c
   engines/workbench/workbench_volume.c
@@ -227,11 +211,17 @@ set(SRC
   engines/eevee/eevee_lut.h
   engines/eevee/eevee_private.h
   engines/external/external_engine.h
-  engines/image/image_drawing_mode_image_space.hh
+  engines/image/image_batches.hh
+  engines/image/image_drawing_mode.hh
   engines/image/image_engine.h
+  engines/image/image_instance_data.hh
+  engines/image/image_partial_updater.hh
   engines/image/image_private.hh
+  engines/image/image_shader_params.hh
   engines/image/image_space_image.hh
   engines/image/image_space_node.hh
+  engines/image/image_space.hh
+  engines/image/image_wrappers.hh
   engines/workbench/workbench_engine.h
   engines/workbench/workbench_private.h
   engines/workbench/workbench_shader_shared.h
@@ -342,7 +332,6 @@ set(GLSL_SRC
   engines/workbench/shaders/workbench_common_lib.glsl
   engines/workbench/shaders/workbench_composite_frag.glsl
   engines/workbench/shaders/workbench_curvature_lib.glsl
-  engines/workbench/shaders/workbench_data_lib.glsl
   engines/workbench/shaders/workbench_effect_cavity_frag.glsl
   engines/workbench/shaders/workbench_effect_dof_frag.glsl
   engines/workbench/shaders/workbench_effect_outline_frag.glsl
@@ -357,7 +346,6 @@ set(GLSL_SRC
   engines/workbench/shaders/workbench_prepass_hair_vert.glsl
   engines/workbench/shaders/workbench_prepass_pointcloud_vert.glsl
   engines/workbench/shaders/workbench_prepass_vert.glsl
-  engines/workbench/shaders/workbench_shader_interface_lib.glsl
   engines/workbench/shaders/workbench_shadow_caps_geom.glsl
   engines/workbench/shaders/workbench_shadow_debug_frag.glsl
   engines/workbench/shaders/workbench_shadow_geom.glsl
@@ -378,6 +366,7 @@ set(GLSL_SRC
   intern/shaders/common_hair_refine_comp.glsl
   intern/shaders/common_math_lib.glsl
   intern/shaders/common_math_geom_lib.glsl
+  intern/shaders/common_view_clipping_lib.glsl
   intern/shaders/common_view_lib.glsl
   intern/shaders/common_fxaa_lib.glsl
   intern/shaders/common_smaa_lib.glsl
@@ -513,8 +502,10 @@ set(GLSL_SRC
   engines/overlay/shaders/wireframe_frag.glsl
   engines/overlay/shaders/xray_fade_frag.glsl
 
-  engines/image/shaders/engine_image_frag.glsl
-  engines/image/shaders/engine_image_vert.glsl
+  engines/image/shaders/image_engine_color_frag.glsl
+  engines/image/shaders/image_engine_color_vert.glsl
+  engines/image/shaders/image_engine_depth_frag.glsl
+  engines/image/shaders/image_engine_depth_vert.glsl
 )
 
 set(GLSL_C)
@@ -532,7 +523,7 @@ set(GLSL_SOURCE_CONTENT "")
 foreach(GLSL_FILE ${GLSL_SRC})
   get_filename_component(GLSL_FILE_NAME ${GLSL_FILE} NAME)
   string(REPLACE "." "_" GLSL_FILE_NAME_UNDERSCORES ${GLSL_FILE_NAME})
-  string(APPEND GLSL_SOURCE_CONTENT "SHADER_SOURCE\(datatoc_${GLSL_FILE_NAME_UNDERSCORES}, \"${GLSL_FILE_NAME}\"\)\n")
+  string(APPEND GLSL_SOURCE_CONTENT "SHADER_SOURCE\(datatoc_${GLSL_FILE_NAME_UNDERSCORES}, \"${GLSL_FILE_NAME}\", \"${GLSL_FILE}\"\)\n")
 endforeach()
 
 set(glsl_source_list_file "${CMAKE_CURRENT_BINARY_DIR}/glsl_draw_source_list.h")

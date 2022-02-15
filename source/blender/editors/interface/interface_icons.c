@@ -1,21 +1,5 @@
-/*
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * The Original Code is Copyright (C) 2001-2002 by NaN Holding BV.
- * All rights reserved.
- */
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright 2001-2002 NaN Holding BV. All rights reserved. */
 
 /** \file
  * \ingroup edinterface
@@ -1949,6 +1933,16 @@ static void ui_id_preview_image_render_size(
   }
 }
 
+void UI_icon_render_id_ex(const bContext *C,
+                          Scene *scene,
+                          ID *id_to_render,
+                          const enum eIconSizes size,
+                          const bool use_job,
+                          PreviewImage *r_preview_image)
+{
+  ui_id_preview_image_render_size(C, scene, id_to_render, r_preview_image, size, use_job);
+}
+
 void UI_icon_render_id(
     const bContext *C, Scene *scene, ID *id, const enum eIconSizes size, const bool use_job)
 {
@@ -1957,19 +1951,21 @@ void UI_icon_render_id(
     return;
   }
 
+  ID *id_to_render = id;
+
   /* For objects, first try if a preview can created via the object data. */
   if (GS(id->name) == ID_OB) {
     Object *ob = (Object *)id;
     if (ED_preview_id_is_supported(ob->data)) {
-      id = ob->data;
+      id_to_render = ob->data;
     }
   }
 
-  if (!ED_preview_id_is_supported(id)) {
+  if (!ED_preview_id_is_supported(id_to_render)) {
     return;
   }
 
-  ui_id_preview_image_render_size(C, scene, id, pi, size, use_job);
+  UI_icon_render_id_ex(C, scene, id_to_render, size, use_job, pi);
 }
 
 static void ui_id_icon_render(const bContext *C, ID *id, bool use_jobs)
@@ -2323,8 +2319,8 @@ int UI_icon_from_idcode(const int idcode)
       return ICON_TEXT;
     case ID_VF:
       return ICON_FONT_DATA;
-    case ID_HA:
-      return ICON_HAIR_DATA;
+    case ID_CV:
+      return ICON_CURVES_DATA;
     case ID_PT:
       return ICON_POINTCLOUD_DATA;
     case ID_VO:

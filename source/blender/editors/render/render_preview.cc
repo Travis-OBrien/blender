@@ -1,21 +1,5 @@
-/*
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * The Original Code is Copyright (C) Blender Foundation.
- * All rights reserved.
- */
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright Blender Foundation. All rights reserved. */
 
 /** \file
  * \ingroup edrend
@@ -767,7 +751,7 @@ struct ObjectPreviewData {
   /* The main for the preview, not of the current file. */
   Main *pr_main;
   /* Copy of the object to create the preview for. The copy is for thread safety (and to insert
-   * it into an own main). */
+   * it into its own main). */
   Object *object;
   /* Current frame. */
   int cfra;
@@ -1061,11 +1045,11 @@ static void shader_preview_texture(ShaderPreview *sp, Tex *tex, Scene *sce, Rend
       /* Evaluate texture at tex_coord. */
       TexResult texres = {0};
       BKE_texture_get_value_ex(sce, tex, tex_coord, &texres, img_pool, color_manage);
-
-      rect_float[0] = texres.tr;
-      rect_float[1] = texres.tg;
-      rect_float[2] = texres.tb;
-      rect_float[3] = texres.talpha ? texres.ta : 1.0f;
+      copy_v4_fl4(rect_float,
+                  texres.trgba[0],
+                  texres.trgba[1],
+                  texres.trgba[2],
+                  texres.talpha ? texres.trgba[3] : 1.0f);
 
       rect_float += 4;
     }

@@ -58,7 +58,7 @@ static void mesh_loops_to_tessdata(CustomData *fdata,
    * The issue is, unless having two different functions with nearly the same code,
    * there's not much ways to solve this. Better IMHO to live with it for now (sigh). */
   const int numUV = CustomData_number_of_layers(ldata, CD_MLOOPUV);
-  const int numCol = CustomData_number_of_layers(ldata, CD_MLOOPCOL);
+  const int numCol = CustomData_number_of_layers(ldata, CD_PROP_BYTE_COLOR);
   const bool hasPCol = CustomData_has_layer(ldata, CD_PREVIEW_MLOOPCOL);
   const bool hasOrigSpace = CustomData_has_layer(ldata, CD_ORIGSPACE_MLOOP);
   const bool hasLoopNormal = CustomData_has_layer(ldata, CD_NORMAL);
@@ -69,7 +69,7 @@ static void mesh_loops_to_tessdata(CustomData *fdata,
 
   for (i = 0; i < numUV; i++) {
     MTFace *texface = CustomData_get_layer_n(fdata, CD_MTFACE, i);
-    MLoopUV *mloopuv = CustomData_get_layer_n(ldata, CD_MLOOPUV, i);
+    const MLoopUV *mloopuv = CustomData_get_layer_n(ldata, CD_MLOOPUV, i);
 
     for (findex = 0, pidx = polyindices, lidx = loopindices; findex < num_faces;
          pidx++, lidx++, findex++, texface++) {
@@ -81,7 +81,7 @@ static void mesh_loops_to_tessdata(CustomData *fdata,
 
   for (i = 0; i < numCol; i++) {
     MCol(*mcol)[4] = CustomData_get_layer_n(fdata, CD_MCOL, i);
-    MLoopCol *mloopcol = CustomData_get_layer_n(ldata, CD_MLOOPCOL, i);
+    const MLoopCol *mloopcol = CustomData_get_layer_n(ldata, CD_PROP_BYTE_COLOR, i);
 
     for (findex = 0, lidx = loopindices; findex < num_faces; lidx++, findex++, mcol++) {
       for (j = (mface ? mface[findex].v4 : (*lidx)[3]) ? 4 : 3; j--;) {
@@ -92,7 +92,7 @@ static void mesh_loops_to_tessdata(CustomData *fdata,
 
   if (hasPCol) {
     MCol(*mcol)[4] = CustomData_get_layer(fdata, CD_PREVIEW_MCOL);
-    MLoopCol *mloopcol = CustomData_get_layer(ldata, CD_PREVIEW_MLOOPCOL);
+    const MLoopCol *mloopcol = CustomData_get_layer(ldata, CD_PREVIEW_MLOOPCOL);
 
     for (findex = 0, lidx = loopindices; findex < num_faces; lidx++, findex++, mcol++) {
       for (j = (mface ? mface[findex].v4 : (*lidx)[3]) ? 4 : 3; j--;) {
@@ -103,7 +103,7 @@ static void mesh_loops_to_tessdata(CustomData *fdata,
 
   if (hasOrigSpace) {
     OrigSpaceFace *of = CustomData_get_layer(fdata, CD_ORIGSPACE);
-    OrigSpaceLoop *lof = CustomData_get_layer(ldata, CD_ORIGSPACE_MLOOP);
+    const OrigSpaceLoop *lof = CustomData_get_layer(ldata, CD_ORIGSPACE_MLOOP);
 
     for (findex = 0, lidx = loopindices; findex < num_faces; lidx++, findex++, of++) {
       for (j = (mface ? mface[findex].v4 : (*lidx)[3]) ? 4 : 3; j--;) {
@@ -114,7 +114,7 @@ static void mesh_loops_to_tessdata(CustomData *fdata,
 
   if (hasLoopNormal) {
     short(*fnors)[4][3] = CustomData_get_layer(fdata, CD_TESSLOOPNORMAL);
-    float(*lnors)[3] = CustomData_get_layer(ldata, CD_NORMAL);
+    const float(*lnors)[3] = CustomData_get_layer(ldata, CD_NORMAL);
 
     for (findex = 0, lidx = loopindices; findex < num_faces; lidx++, findex++, fnors++) {
       for (j = (mface ? mface[findex].v4 : (*lidx)[3]) ? 4 : 3; j--;) {
@@ -126,7 +126,7 @@ static void mesh_loops_to_tessdata(CustomData *fdata,
   if (hasLoopTangent) {
     /* Need to do for all UV maps at some point. */
     float(*ftangents)[4] = CustomData_get_layer(fdata, CD_TANGENT);
-    float(*ltangents)[4] = CustomData_get_layer(ldata, CD_TANGENT);
+    const float(*ltangents)[4] = CustomData_get_layer(ldata, CD_TANGENT);
 
     for (findex = 0, pidx = polyindices, lidx = loopindices; findex < num_faces;
          pidx++, lidx++, findex++) {
@@ -144,8 +144,7 @@ int BKE_mesh_tessface_calc_ex(CustomData *fdata,
                               MVert *mvert,
                               int totface,
                               int totloop,
-                              int totpoly,
-                              const bool do_face_nor_copy)
+                              int totpoly)
 {
 #define USE_TESSFACE_SPEEDUP
 #define USE_TESSFACE_QUADS
@@ -155,8 +154,8 @@ int BKE_mesh_tessface_calc_ex(CustomData *fdata,
 
   const int looptri_num = poly_to_tri_count(totpoly, totloop);
 
-  MPoly *mp, *mpoly;
-  MLoop *ml, *mloop;
+  const MPoly *mp, *mpoly;
+  const MLoop *ml, *mloop;
   MFace *mface, *mf;
   MemArena *arena = NULL;
   int *mface_to_poly_map;
@@ -347,18 +346,6 @@ int BKE_mesh_tessface_calc_ex(CustomData *fdata,
   CustomData_add_layer(fdata, CD_ORIGINDEX, CD_ASSIGN, mface_to_poly_map, totface);
   CustomData_from_bmeshpoly(fdata, ldata, totface);
 
-  if (do_face_nor_copy) {
-    /* If polys have a normals layer, copying that to faces can help
-     * avoid the need to recalculate normals later. */
-    if (CustomData_has_layer(pdata, CD_NORMAL)) {
-      float(*pnors)[3] = CustomData_get_layer(pdata, CD_NORMAL);
-      float(*fnors)[3] = CustomData_add_layer(fdata, CD_NORMAL, CD_CALLOC, NULL, totface);
-      for (mface_index = 0; mface_index < totface; mface_index++) {
-        copy_v3_v3(fnors[mface_index], pnors[mface_to_poly_map[mface_index]]);
-      }
-    }
-  }
-
   /* NOTE: quad detection issue - fourth vertidx vs fourth loopidx:
    * Polygons take care of their loops ordering, hence not of their vertices ordering.
    * Currently, our tfaces' fourth vertex index might be 0 even for a quad.
@@ -395,16 +382,13 @@ int BKE_mesh_tessface_calc_ex(CustomData *fdata,
 
 void BKE_mesh_tessface_calc(Mesh *mesh)
 {
-  mesh->totface = BKE_mesh_tessface_calc_ex(
-      &mesh->fdata,
-      &mesh->ldata,
-      &mesh->pdata,
-      mesh->mvert,
-      mesh->totface,
-      mesh->totloop,
-      mesh->totpoly,
-      /* Calculate normals right after, don't copy from polys here. */
-      false);
+  mesh->totface = BKE_mesh_tessface_calc_ex(&mesh->fdata,
+                                            &mesh->ldata,
+                                            &mesh->pdata,
+                                            mesh->mvert,
+                                            mesh->totface,
+                                            mesh->totloop,
+                                            mesh->totpoly);
 
   BKE_mesh_update_customdata_pointers(mesh, true);
 }

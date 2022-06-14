@@ -68,14 +68,11 @@ static void joined_armature_fix_links_constraints(Main *bmain,
   bool changed = false;
 
   for (con = lb->first; con; con = con->next) {
-    const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
     ListBase targets = {NULL, NULL};
     bConstraintTarget *ct;
 
     /* constraint targets */
-    if (cti && cti->get_constraint_targets) {
-      cti->get_constraint_targets(con, &targets);
-
+    if (BKE_constraint_targets_get(con, &targets)) {
       for (ct = targets.first; ct; ct = ct->next) {
         if (ct->tar == srcArm) {
           if (ct->subtarget[0] == '\0') {
@@ -90,9 +87,7 @@ static void joined_armature_fix_links_constraints(Main *bmain,
         }
       }
 
-      if (cti->flush_constraint_targets) {
-        cti->flush_constraint_targets(con, &targets, 0);
-      }
+      BKE_constraint_targets_flush(con, &targets, 0);
     }
 
     /* action constraint? (pose constraints only) */
@@ -377,6 +372,15 @@ int ED_armature_join_objects_exec(bContext *C, wmOperator *op)
         BKE_pose_channels_hash_free(pose);
       }
 
+      /* Armature ID itself is not freed below, however it has been modified (and is now completely
+       * empty). This needs to be told to the depsgraph, it will also ensure that the global
+       * memfile undo system properly detects the change.
+       *
+       * FIXME: Modifying an existing obdata because we are joining an object using it into another
+       * object is a very questionable behavior, which also does not match with other object types
+       * joining. */
+      DEG_id_tag_update_ex(bmain, &curarm->id, ID_RECALC_GEOMETRY);
+
       /* Fix all the drivers (and animation data) */
       BKE_fcurves_main_cb(bmain, joined_armature_fix_animdata_cb, &afd);
       BLI_ghash_free(afd.names_map, MEM_freeN, NULL);
@@ -450,14 +454,11 @@ static void separated_armature_fix_links(Main *bmain, Object *origArm, Object *n
     if (ob->type == OB_ARMATURE) {
       for (pchan = ob->pose->chanbase.first; pchan; pchan = pchan->next) {
         for (con = pchan->constraints.first; con; con = con->next) {
-          const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
           ListBase targets = {NULL, NULL};
           bConstraintTarget *ct;
 
           /* constraint targets */
-          if (cti && cti->get_constraint_targets) {
-            cti->get_constraint_targets(con, &targets);
-
+          if (BKE_constraint_targets_get(con, &targets)) {
             for (ct = targets.first; ct; ct = ct->next) {
               /* Any targets which point to original armature
                * are redirected to the new one only if:
@@ -478,9 +479,7 @@ static void separated_armature_fix_links(Main *bmain, Object *origArm, Object *n
               }
             }
 
-            if (cti->flush_constraint_targets) {
-              cti->flush_constraint_targets(con, &targets, 0);
-            }
+            BKE_constraint_targets_flush(con, &targets, 0);
           }
         }
       }
@@ -489,14 +488,11 @@ static void separated_armature_fix_links(Main *bmain, Object *origArm, Object *n
     /* fix object-level constraints */
     if (ob != origArm) {
       for (con = ob->constraints.first; con; con = con->next) {
-        const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
         ListBase targets = {NULL, NULL};
         bConstraintTarget *ct;
 
         /* constraint targets */
-        if (cti && cti->get_constraint_targets) {
-          cti->get_constraint_targets(con, &targets);
-
+        if (BKE_constraint_targets_get(con, &targets)) {
           for (ct = targets.first; ct; ct = ct->next) {
             /* any targets which point to original armature are redirected to the new one only if:
              * - the target isn't origArm/newArm itself
@@ -516,9 +512,7 @@ static void separated_armature_fix_links(Main *bmain, Object *origArm, Object *n
             }
           }
 
-          if (cti->flush_constraint_targets) {
-            cti->flush_constraint_targets(con, &targets, 0);
-          }
+          BKE_constraint_targets_flush(con, &targets, 0);
         }
       }
     }

@@ -151,11 +151,22 @@ class GHOST_System : public GHOST_ISystem {
   bool useNativePixel(void);
   bool m_nativePixel;
 
+  bool supportsCursorWarp(void);
+
   /**
    * Focus window after opening, or put them in the background.
    */
   void useWindowFocus(const bool use_focus);
+
   bool m_windowFocus;
+
+  /**
+   * Get the Window under the cursor.
+   * \param x: The x-coordinate of the cursor.
+   * \param y: The y-coordinate of the cursor.
+   * \return The window under the cursor or nullptr if none.
+   */
+  GHOST_IWindow *getWindowUnderCursor(int32_t x, int32_t y);
 
   /***************************************************************************************
    * Event management functionality
@@ -326,8 +337,9 @@ class GHOST_System : public GHOST_ISystem {
 
   /**
    * Specify whether debug messages are to be shown.
+   * \param debug: Flag for systems to debug.
    */
-  virtual void initDebug(bool is_debug_enabled);
+  virtual void initDebug(GHOST_Debug debug);
 
   /**
    * Check whether debug messages are to be shown.

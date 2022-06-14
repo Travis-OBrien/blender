@@ -133,6 +133,9 @@ class GHOST_ISystem {
    */
   static GHOST_ISystem *getSystem();
 
+  static GHOST_TBacktraceFn getBacktraceFn();
+  static void setBacktraceFn(GHOST_TBacktraceFn backtrace_fn);
+
  protected:
   /**
    * Constructor.
@@ -305,9 +308,22 @@ class GHOST_ISystem {
   virtual bool useNativePixel(void) = 0;
 
   /**
+   * Return true when warping the cursor is supported.
+   */
+  virtual bool supportsCursorWarp() = 0;
+
+  /**
    * Focus window after opening, or put them in the background.
    */
   virtual void useWindowFocus(const bool use_focus) = 0;
+
+  /**
+   * Get the Window under the cursor.
+   * \param x: The x-coordinate of the cursor.
+   * \param y: The y-coordinate of the cursor.
+   * \return The window under the cursor or nullptr if none.
+   */
+  virtual GHOST_IWindow *getWindowUnderCursor(int32_t x, int32_t y) = 0;
 
   /***************************************************************************************
    * Event management functionality
@@ -444,8 +460,9 @@ class GHOST_ISystem {
 
   /**
    * Specify whether debug messages are to be shown.
+   * \param debug: Flag for systems to debug.
    */
-  virtual void initDebug(bool is_debug_enabled) = 0;
+  virtual void initDebug(GHOST_Debug debug) = 0;
 
   /**
    * Check whether debug messages are to be shown.
@@ -467,6 +484,9 @@ class GHOST_ISystem {
 
   /** The one and only system */
   static GHOST_ISystem *m_system;
+
+  /** Function to call that sets the back-trace. */
+  static GHOST_TBacktraceFn m_backtrace_fn;
 
 #ifdef WITH_CXX_GUARDEDALLOC
   MEM_CXX_CLASS_ALLOC_FUNCS("GHOST:GHOST_ISystem")

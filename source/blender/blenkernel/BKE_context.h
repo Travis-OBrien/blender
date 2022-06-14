@@ -10,6 +10,8 @@
 /* XXX temporary, until AssetHandle is designed properly and queries can return a pointer to it. */
 #include "DNA_asset_types.h"
 
+#include "BLI_utildefines.h"
+
 #include "DNA_listBase.h"
 #include "DNA_object_enums.h"
 #include "RNA_types.h"
@@ -106,6 +108,7 @@ typedef enum eContextObjectMode {
   CTX_MODE_EDIT_ARMATURE,
   CTX_MODE_EDIT_METABALL,
   CTX_MODE_EDIT_LATTICE,
+  CTX_MODE_EDIT_CURVES,
   CTX_MODE_POSE,
   CTX_MODE_SCULPT,
   CTX_MODE_PAINT_WEIGHT,
@@ -118,8 +121,9 @@ typedef enum eContextObjectMode {
   CTX_MODE_SCULPT_GPENCIL,
   CTX_MODE_WEIGHT_GPENCIL,
   CTX_MODE_VERTEX_GPENCIL,
+  CTX_MODE_SCULPT_CURVES,
 } eContextObjectMode;
-#define CTX_MODE_NUM (CTX_MODE_VERTEX_GPENCIL + 1)
+#define CTX_MODE_NUM (CTX_MODE_SCULPT_CURVES + 1)
 
 /* Context */
 
@@ -134,6 +138,9 @@ bContextStore *CTX_store_add(ListBase *contexts, const char *name, const Pointer
 bContextStore *CTX_store_add_all(ListBase *contexts, bContextStore *context);
 bContextStore *CTX_store_get(bContext *C);
 void CTX_store_set(bContext *C, bContextStore *store);
+const PointerRNA *CTX_store_ptr_lookup(const bContextStore *store,
+                                       const char *name,
+                                       const StructRNA *type CPP_ARG_DEFAULT(nullptr));
 bContextStore *CTX_store_copy(bContextStore *store);
 void CTX_store_free(bContextStore *store);
 void CTX_store_free_list(ListBase *contexts);
@@ -215,9 +222,10 @@ void CTX_wm_operator_poll_msg_clear(struct bContext *C);
 
 /* Data Context
  *
- * - listbases consist of CollectionPointerLink items and must be
- *   freed with BLI_freelistN!
- * - the dir listbase consists of LinkData items */
+ * - #ListBase consists of #CollectionPointerLink items and must be
+ *   freed with #BLI_freelistN!
+ * - The dir #ListBase consists of #LinkData items.
+ */
 
 /* data type, needed so we can tell between a NULL pointer and an empty list */
 enum {

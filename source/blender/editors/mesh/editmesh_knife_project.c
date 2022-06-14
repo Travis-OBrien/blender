@@ -58,7 +58,7 @@ static LinkNode *knifeproject_poly_from_object(const bContext *C,
     }
     me_eval_needs_free = false;
   }
-  else if (ELEM(ob->type, OB_FONT, OB_CURVE, OB_SURF)) {
+  else if (ELEM(ob->type, OB_FONT, OB_CURVES_LEGACY, OB_SURF)) {
     Object *ob_eval = DEG_get_evaluated_object(depsgraph, ob);
     me_eval = BKE_mesh_new_nomain_from_curve(ob_eval);
     me_eval_needs_free = true;
@@ -142,7 +142,7 @@ static int knifeproject_exec(bContext *C, wmOperator *op)
     ED_view3d_viewcontext_init_object(&vc, obedit);
     BMEditMesh *em = BKE_editmesh_from_object(obedit);
 
-    EDBM_mesh_knife(C, &vc, polys, true, cut_through);
+    EDBM_mesh_knife(&vc, polys, true, cut_through);
 
     /* select only tagged faces */
     BM_mesh_elem_hflag_disable_all(em->bm, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, false);

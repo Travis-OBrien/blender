@@ -193,7 +193,7 @@
     .vgname = "", \
     .pass_index = 0, \
     .flag = GP_SMOOTH_MOD_LOCATION, \
-    .factor = 0.5f, \
+    .factor = 1.0f, \
     .step = 1, \
     .layer_pass = 0, \
     .curve_intensity = NULL, \
@@ -303,7 +303,8 @@
     .crease_threshold = DEG2RAD(140.0f), \
     .calculation_flags = LRT_ALLOW_DUPLI_OBJECTS | LRT_ALLOW_CLIPPING_BOUNDARIES | \
                          LRT_USE_CREASE_ON_SHARP_EDGES | LRT_FILTER_FACE_MARK_KEEP_CONTOUR, \
-    .angle_splitting_threshold = DEG2RAD(60.0f), \
+    /* Do not split by default, this is for better chaining quality. */ \
+    .angle_splitting_threshold = 0.0f, \
     .chaining_image_threshold = 0.001f, \
     .chain_smooth_tolerance = 0.2f,\
     .stroke_depth_offset = 0.05,\
@@ -364,6 +365,16 @@
     .layer_pass = 0, \
     .smooth_factor = 0.05f, \
     .smooth_step = 1, \
+  }
+
+#define _DNA_DEFAULT_EnvelopeGpencilModifierData \
+  { \
+    .spread = 10, \
+    .mode = GP_ENVELOPE_SEGMENTS, \
+    .mat_nr = -1, \
+    .thickness = 1.0f, \
+    .strength = 1.0f, \
+    .skip = 0, \
   }
 
 

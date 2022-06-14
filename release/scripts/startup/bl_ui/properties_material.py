@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-
-# <pep8 compliant>
 import bpy
 from bpy.types import Menu, Panel, UIList
 from rna_prop_ui import PropertyPanel
@@ -28,6 +26,7 @@ class MATERIAL_UL_matslots(UIList):
         ma = slot.material
 
         layout.context_pointer_set("id", ma)
+        layout.context_pointer_set("material_slot", slot)
 
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             if ma:

@@ -16,13 +16,16 @@ static void set_id_in_component(GeometryComponent &component,
                                 const Field<bool> &selection_field,
                                 const Field<int> &id_field)
 {
-  GeometryComponentFieldContext field_context{component, ATTR_DOMAIN_POINT};
-  const int domain_size = component.attribute_domain_size(ATTR_DOMAIN_POINT);
-  if (domain_size == 0) {
+  const eAttrDomain domain = (component.type() == GEO_COMPONENT_TYPE_INSTANCES) ?
+                                 ATTR_DOMAIN_INSTANCE :
+                                 ATTR_DOMAIN_POINT;
+  GeometryComponentFieldContext field_context{component, domain};
+  const int domain_num = component.attribute_domain_num(domain);
+  if (domain_num == 0) {
     return;
   }
 
-  fn::FieldEvaluator evaluator{field_context, domain_size};
+  fn::FieldEvaluator evaluator{field_context, domain_num};
   evaluator.set_selection(selection_field);
 
   /* Since adding the ID attribute can change the result of the field evaluation (the random value
@@ -30,7 +33,7 @@ static void set_id_in_component(GeometryComponent &component,
    * the field. However, as an optimization, use a faster code path when it already exists. */
   if (component.attribute_exists("id")) {
     OutputAttribute_Typed<int> id_attribute = component.attribute_try_get_for_output_only<int>(
-        "id", ATTR_DOMAIN_POINT);
+        "id", domain);
     evaluator.add_with_destination(id_field, id_attribute.varray());
     evaluator.evaluate();
     id_attribute.save();
@@ -41,7 +44,7 @@ static void set_id_in_component(GeometryComponent &component,
     const IndexMask selection = evaluator.get_evaluated_selection_as_mask();
     const VArray<int> &result_ids = evaluator.get_evaluated<int>(0);
     OutputAttribute_Typed<int> id_attribute = component.attribute_try_get_for_output_only<int>(
-        "id", ATTR_DOMAIN_POINT);
+        "id", domain);
     result_ids.materialize(selection, id_attribute.as_span());
     id_attribute.save();
   }

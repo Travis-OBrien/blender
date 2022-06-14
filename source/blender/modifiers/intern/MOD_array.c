@@ -38,6 +38,7 @@
 #include "UI_resources.h"
 
 #include "RNA_access.h"
+#include "RNA_prototypes.h"
 
 #include "MOD_ui_common.h"
 #include "MOD_util.h"
@@ -138,17 +139,17 @@ static void svert_from_mvert(SortVertsElem *sv,
 
 /**
  * Take as inputs two sets of verts, to be processed for detection of doubles and mapping.
- * Each set of verts is defined by its start within mverts array and its num_verts;
+ * Each set of verts is defined by its start within mverts array and its verts_num;
  * It builds a mapping for all vertices within source,
  * to vertices within target, or -1 if no double found.
- * The int doubles_map[num_verts_source] array must have been allocated by caller.
+ * The `int doubles_map[verts_source_num]` array must have been allocated by caller.
  */
 static void dm_mvert_map_doubles(int *doubles_map,
                                  const MVert *mverts,
                                  const int target_start,
-                                 const int target_num_verts,
+                                 const int target_verts_num,
                                  const int source_start,
-                                 const int source_num_verts,
+                                 const int source_verts_num,
                                  const float dist)
 {
   const float dist3 = ((float)M_SQRT3 + 0.00005f) * dist; /* Just above sqrt(3) */
@@ -157,12 +158,12 @@ static void dm_mvert_map_doubles(int *doubles_map,
   SortVertsElem *sve_source, *sve_target, *sve_target_low_bound;
   bool target_scan_completed;
 
-  target_end = target_start + target_num_verts;
-  source_end = source_start + source_num_verts;
+  target_end = target_start + target_verts_num;
+  source_end = source_start + source_verts_num;
 
   /* build array of MVerts to be tested for merging */
-  sorted_verts_target = MEM_malloc_arrayN(target_num_verts, sizeof(SortVertsElem), __func__);
-  sorted_verts_source = MEM_malloc_arrayN(source_num_verts, sizeof(SortVertsElem), __func__);
+  sorted_verts_target = MEM_malloc_arrayN(target_verts_num, sizeof(SortVertsElem), __func__);
+  sorted_verts_source = MEM_malloc_arrayN(source_verts_num, sizeof(SortVertsElem), __func__);
 
   /* Copy target vertices index and cos into SortVertsElem array */
   svert_from_mvert(sorted_verts_target, mverts + target_start, target_start, target_end);
@@ -171,8 +172,8 @@ static void dm_mvert_map_doubles(int *doubles_map,
   svert_from_mvert(sorted_verts_source, mverts + source_start, source_start, source_end);
 
   /* sort arrays according to sum of vertex coordinates (sumco) */
-  qsort(sorted_verts_target, target_num_verts, sizeof(SortVertsElem), svert_sum_cmp);
-  qsort(sorted_verts_source, source_num_verts, sizeof(SortVertsElem), svert_sum_cmp);
+  qsort(sorted_verts_target, target_verts_num, sizeof(SortVertsElem), svert_sum_cmp);
+  qsort(sorted_verts_source, source_verts_num, sizeof(SortVertsElem), svert_sum_cmp);
 
   sve_target_low_bound = sorted_verts_target;
   i_target_low_bound = 0;
@@ -180,7 +181,7 @@ static void dm_mvert_map_doubles(int *doubles_map,
 
   /* Scan source vertices, in #SortVertsElem sorted array,
    * all the while maintaining the lower bound of possible doubles in target vertices. */
-  for (i_source = 0, sve_source = sorted_verts_source; i_source < source_num_verts;
+  for (i_source = 0, sve_source = sorted_verts_source; i_source < source_verts_num;
        i_source++, sve_source++) {
     int best_target_vertex = -1;
     float best_dist_sq = dist * dist;
@@ -201,13 +202,13 @@ static void dm_mvert_map_doubles(int *doubles_map,
 
     /* Skip all target vertices that are more than dist3 lower in terms of sumco */
     /* and advance the overall lower bound, applicable to all remaining vertices as well. */
-    while ((i_target_low_bound < target_num_verts) &&
+    while ((i_target_low_bound < target_verts_num) &&
            (sve_target_low_bound->sum_co < sve_source_sumco - dist3)) {
       i_target_low_bound++;
       sve_target_low_bound++;
     }
     /* If end of target list reached, then no more possible doubles */
-    if (i_target_low_bound >= target_num_verts) {
+    if (i_target_low_bound >= target_verts_num) {
       doubles_map[sve_source->vertex_num] = -1;
       target_scan_completed = true;
       continue;
@@ -220,7 +221,7 @@ static void dm_mvert_map_doubles(int *doubles_map,
     /* i_target will scan vertices in the
      * [v_source_sumco - dist3;  v_source_sumco + dist3] range */
 
-    while ((i_target < target_num_verts) && (sve_target->sum_co <= sve_source_sumco + dist3)) {
+    while ((i_target < target_verts_num) && (sve_target->sum_co <= sve_source_sumco + dist3)) {
       /* Testing distance for candidate double in target */
       /* v_target is within dist3 of v_source in terms of sumco;  check real distance */
       float dist_sq;
@@ -327,7 +328,7 @@ static void mesh_merge_transform(Mesh *result,
     ml->e += cap_edges_index;
   }
 
-  /* set origindex */
+  /* Set #CD_ORIGINDEX. */
   index_orig = CustomData_get_layer(&result->vdata, CD_ORIGINDEX);
   if (index_orig) {
     copy_vn_i(index_orig + cap_verts_index, cap_nverts, ORIGINDEX_NONE);
@@ -371,7 +372,7 @@ static Mesh *arrayModifier_doArray(ArrayModifierData *amd,
   int tot_doubles;
 
   const bool use_merge = (amd->flags & MOD_ARR_MERGE) != 0;
-  const bool use_recalc_normals = (mesh->runtime.cd_dirty_vert & CD_MASK_NORMAL) || use_merge;
+  const bool use_recalc_normals = BKE_mesh_vertex_normals_are_dirty(mesh) || use_merge;
   const bool use_offset_ob = ((amd->offset_type & MOD_ARR_OFF_OBJ) && amd->offset_ob != NULL);
 
   int start_cap_nverts = 0, start_cap_nedges = 0, start_cap_npolys = 0, start_cap_nloops = 0;
@@ -396,8 +397,10 @@ static Mesh *arrayModifier_doArray(ArrayModifierData *amd,
 
   Object *start_cap_ob = amd->start_cap;
   if (start_cap_ob && start_cap_ob != ctx->object) {
-    vgroup_start_cap_remap = BKE_object_defgroup_index_map_create(
-        start_cap_ob, ctx->object, &vgroup_start_cap_remap_len);
+    if (start_cap_ob->type == OB_MESH && ctx->object->type == OB_MESH) {
+      vgroup_start_cap_remap = BKE_object_defgroup_index_map_create(
+          start_cap_ob, ctx->object, &vgroup_start_cap_remap_len);
+    }
 
     start_cap_mesh = BKE_modifier_get_evaluated_mesh_from_evaluated_object(start_cap_ob, false);
     if (start_cap_mesh) {
@@ -409,8 +412,10 @@ static Mesh *arrayModifier_doArray(ArrayModifierData *amd,
   }
   Object *end_cap_ob = amd->end_cap;
   if (end_cap_ob && end_cap_ob != ctx->object) {
-    vgroup_end_cap_remap = BKE_object_defgroup_index_map_create(
-        end_cap_ob, ctx->object, &vgroup_end_cap_remap_len);
+    if (end_cap_ob->type == OB_MESH && ctx->object->type == OB_MESH) {
+      vgroup_end_cap_remap = BKE_object_defgroup_index_map_create(
+          end_cap_ob, ctx->object, &vgroup_end_cap_remap_len);
+    }
 
     end_cap_mesh = BKE_modifier_get_evaluated_mesh_from_evaluated_object(end_cap_ob, false);
     if (end_cap_mesh) {
@@ -459,7 +464,7 @@ static Mesh *arrayModifier_doArray(ArrayModifierData *amd,
     copy_m4_m4(offset, result_mat);
   }
 
-  /* Check if there is some scaling.  If scaling, then we will not translate mapping */
+  /* Check if there is some scaling. If scaling, then we will not translate mapping */
   mat4_to_size(scale, offset);
   offset_has_scale = !is_one_v3(scale);
 
@@ -473,7 +478,7 @@ static Mesh *arrayModifier_doArray(ArrayModifierData *amd,
   }
 
   /* About 67 million vertices max seems a decent limit for now. */
-  const size_t max_num_vertices = 1 << 26;
+  const size_t max_vertices_num = 1 << 26;
 
   /* calculate the maximum number of copies which will fit within the
    * prescribed length */
@@ -491,7 +496,7 @@ static Mesh *arrayModifier_doArray(ArrayModifierData *amd,
        * vertices.
        */
       if (((size_t)count * (size_t)chunk_nverts + (size_t)start_cap_nverts +
-           (size_t)end_cap_nverts) > max_num_vertices) {
+           (size_t)end_cap_nverts) > max_vertices_num) {
         count = 1;
         offset_is_too_small = true;
       }
@@ -513,7 +518,7 @@ static Mesh *arrayModifier_doArray(ArrayModifierData *amd,
    * vertices.
    */
   else if (((size_t)count * (size_t)chunk_nverts + (size_t)start_cap_nverts +
-            (size_t)end_cap_nverts) > max_num_vertices) {
+            (size_t)end_cap_nverts) > max_vertices_num) {
     count = 1;
     BKE_modifier_set_error(ctx->object,
                            &amd->modifier,
@@ -784,13 +789,6 @@ static Mesh *arrayModifier_doArray(ArrayModifierData *amd,
     MEM_freeN(full_doubles_map);
   }
 
-  /* In case org dm has dirty normals, or we made some merging, mark normals as dirty in new mesh!
-   * TODO: we may need to set other dirty flags as well?
-   */
-  if (use_recalc_normals) {
-    BKE_mesh_normals_tag_dirty(result);
-  }
-
   if (vgroup_start_cap_remap) {
     MEM_freeN(vgroup_start_cap_remap);
   }
@@ -819,7 +817,7 @@ static bool isDisabled(const struct Scene *UNUSED(scene),
    * In other cases it should be impossible to have a type mismatch.
    */
 
-  if (amd->curve_ob && amd->curve_ob->type != OB_CURVE) {
+  if (amd->curve_ob && amd->curve_ob->type != OB_CURVES_LEGACY) {
     return true;
   }
   if (amd->start_cap && amd->start_cap->type != OB_MESH) {

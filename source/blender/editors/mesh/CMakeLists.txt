@@ -19,10 +19,12 @@ set(INC
   ../../../../intern/clog
   ../../../../intern/glew-mx
   ../../../../intern/guardedalloc
+  # RNA_prototypes.h
+  ${CMAKE_BINARY_DIR}/source/blender/makesrna
 )
 
 set(SRC
-  editface.c
+  editface.cc
   editmesh_add.c
   editmesh_add_gizmo.c
   editmesh_automerge.c
@@ -49,10 +51,10 @@ set(SRC
   editmesh_tools.c
   editmesh_undo.c
   editmesh_utils.c
-  mesh_data.c
+  mesh_data.cc
   mesh_mirror.c
   mesh_ops.c
-  meshtools.c
+  meshtools.cc
 
   mesh_intern.h
 )
@@ -77,3 +79,6 @@ endif()
 
 
 blender_add_lib(bf_editor_mesh "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
+
+# RNA_prototypes.h
+add_dependencies(bf_editor_mesh bf_rna)

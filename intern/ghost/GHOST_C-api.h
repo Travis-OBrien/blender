@@ -30,8 +30,10 @@ extern GHOST_SystemHandle GHOST_CreateSystem(void);
 
 /**
  * Specifies whether debug messages are to be enabled for the specific system handle.
+ * \param systemhandle: The handle to the system.
+ * \param debug: Flag for systems to debug.
  */
-extern void GHOST_SystemInitDebug(GHOST_SystemHandle systemhandle, int is_debug_enabled);
+extern void GHOST_SystemInitDebug(GHOST_SystemHandle systemhandle, GHOST_Debug debug);
 
 /**
  * Disposes the one and only system.
@@ -146,7 +148,7 @@ extern void GHOST_GetAllDisplayDimensions(GHOST_SystemHandle systemhandle,
  * The new window is added to the list of windows managed.
  * Never explicitly delete the window, use disposeWindow() instead.
  * \param systemhandle: The handle to the system.
- * \param parentWindow: Handle of parent (or owner) window, or NULL
+ * \param parent_windowhandle: Handle of parent (or owner) window, or NULL
  * \param title: The name of the window.
  * (displayed in the title bar of the window if the OS supports it).
  * \param left: The coordinate of the left edge of the window.
@@ -175,7 +177,7 @@ extern GHOST_WindowHandle GHOST_CreateWindow(GHOST_SystemHandle systemhandle,
  * Create a new off-screen context.
  * Never explicitly delete the context, use #disposeContext() instead.
  * \param systemhandle: The handle to the system.
- * \param platform_support_callback: An optional callback to check platform support.
+ * \param glSettings: Misc OpenGL options.
  * \return A handle to the new context ( == NULL if creation failed).
  */
 extern GHOST_ContextHandle GHOST_CreateOpenGLContext(GHOST_SystemHandle systemhandle,
@@ -248,6 +250,16 @@ extern GHOST_TSuccess GHOST_EndFullScreen(GHOST_SystemHandle systemhandle);
  * \return The current status.
  */
 extern int GHOST_GetFullScreen(GHOST_SystemHandle systemhandle);
+
+/**
+ * Get the Window under the cursor.
+ * \param x: The x-coordinate of the cursor.
+ * \param y: The y-coordinate of the cursor.
+ * \return The window under the cursor or nullptr in none.
+ */
+extern GHOST_WindowHandle GHOST_GetWindowUnderCursor(GHOST_SystemHandle systemhandle,
+                                                     int32_t x,
+                                                     int32_t y);
 
 /***************************************************************************************
  * Event management functionality
@@ -390,6 +402,11 @@ extern GHOST_TSuccess GHOST_SetCursorPosition(GHOST_SystemHandle systemhandle,
                                               int32_t x,
                                               int32_t y);
 
+void GHOST_GetCursorGrabState(GHOST_WindowHandle windowhandle,
+                              GHOST_TGrabCursorMode *r_mode,
+                              GHOST_TAxisFlag *r_wrap_axis,
+                              int r_bounds[4]);
+
 /**
  * Grabs the cursor for a modal operation, to keep receiving
  * events when the mouse is outside the window. X11 only, others
@@ -402,7 +419,7 @@ extern GHOST_TSuccess GHOST_SetCursorPosition(GHOST_SystemHandle systemhandle,
  */
 extern GHOST_TSuccess GHOST_SetCursorGrab(GHOST_WindowHandle windowhandle,
                                           GHOST_TGrabCursorMode mode,
-                                          GHOST_TAxisFlag warp_axis,
+                                          GHOST_TAxisFlag wrap_axis,
                                           int bounds[4],
                                           const int mouse_ungrab_xy[2]);
 
@@ -715,7 +732,7 @@ extern unsigned int GHOST_GetContextDefaultOpenGLFramebuffer(GHOST_ContextHandle
 /**
  * Get the OpenGL frame-buffer handle that serves as a default frame-buffer.
  */
-extern unsigned int GHOST_GetDefaultOpenGLFramebuffer(GHOST_WindowHandle windwHandle);
+extern unsigned int GHOST_GetDefaultOpenGLFramebuffer(GHOST_WindowHandle windowhandle);
 
 /**
  * Set which tablet API to use. Only affects Windows, other platforms have a single API.
@@ -883,6 +900,16 @@ extern int setConsoleWindowState(GHOST_TConsoleWindowState action);
  * Use native pixel size (MacBook pro 'retina'), if supported.
  */
 extern int GHOST_UseNativePixels(void);
+
+/**
+ * Warp the cursor, if supported.
+ */
+extern int GHOST_SupportsCursorWarp(void);
+
+/**
+ * Assign the callback which generates a back-trace (may be NULL).
+ */
+extern void GHOST_SetBacktraceHandler(GHOST_TBacktraceFn backtrace_fn);
 
 /**
  * Focus window after opening, or put them in the background.

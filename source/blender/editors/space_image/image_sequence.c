@@ -33,9 +33,8 @@ typedef struct ImageFrame {
 } ImageFrame;
 
 /**
- * Get a list of frames from the list of image files matching the first file
- * name sequence pattern. The files and directory are read from standard
- * fileselect operator properties.
+ * Get a list of frames from the list of image files matching the first file name sequence pattern.
+ * The files and directory are read from standard file-select operator properties.
  *
  * The output is a list of frame ranges, each containing a list of frames with matching names.
  */
@@ -108,10 +107,10 @@ static void image_detect_frame_range(ImageFrameRange *range, const bool detect_u
   /* UDIM */
   if (detect_udim) {
     int udim_start, udim_range;
-    bool result = BKE_image_get_tile_info(
+    range->udims_detected = BKE_image_get_tile_info(
         range->filepath, &range->udim_tiles, &udim_start, &udim_range);
 
-    if (result) {
+    if (range->udims_detected) {
       range->offset = udim_start;
       range->length = udim_range;
       return;

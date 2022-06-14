@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-
-# <pep8 compliant>
 import bpy
 from bpy.types import Menu, Panel, UIList
 from rna_prop_ui import PropertyPanel
@@ -35,6 +33,20 @@ class DATA_PT_context_curves(DataButtonsPanel, Panel):
             layout.template_ID(space, "pin_id")
 
 
+class DATA_PT_curves_surface(DataButtonsPanel, Panel):
+    bl_label = "Surface"
+    COMPAT_ENGINES = {'BLENDER_RENDER', 'BLENDER_EEVEE', 'BLENDER_WORKBENCH'}
+
+    def draw(self, context):
+        layout = self.layout
+        ob = context.object
+
+        layout.use_property_split = True
+
+        layout.prop(ob.data, "surface")
+        layout.prop(ob.data, "surface_uv_map", text="UV Map")
+
+
 class CURVES_MT_add_attribute(Menu):
     bl_label = "Add Attribute"
 
@@ -65,6 +77,16 @@ class CURVES_MT_add_attribute(Menu):
 
 
 class CURVES_UL_attributes(UIList):
+    def filter_items(self, _context, data, property):
+        attributes = getattr(data, property)
+        flags = []
+        indices = [i for i in range(len(attributes))]
+
+        for item in attributes:
+            flags.append(self.bitflag_filter_item if item.is_internal else 0)
+
+        return flags, indices
+
     def draw_item(self, _context, layout, _data, attribute, _icon, _active_data, _active_propname, _index):
         data_type = attribute.bl_rna.properties['data_type'].enum_items[attribute.data_type]
         domain = attribute.bl_rna.properties['domain'].enum_items[attribute.domain]
@@ -115,6 +137,7 @@ class DATA_PT_custom_props_curves(DataButtonsPanel, PropertyPanel, Panel):
 classes = (
     DATA_PT_context_curves,
     DATA_PT_CURVES_attributes,
+    DATA_PT_curves_surface,
     DATA_PT_custom_props_curves,
     CURVES_MT_add_attribute,
     CURVES_UL_attributes,

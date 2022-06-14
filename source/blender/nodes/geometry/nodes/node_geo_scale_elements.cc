@@ -31,7 +31,8 @@ static void node_declare(NodeDeclarationBuilder &b)
   b.add_input<decl::Vector>(N_("Axis"))
       .default_value({1.0f, 0.0f, 0.0f})
       .supports_field()
-      .description(N_("Direction in which to scale the element"));
+      .description(N_("Direction in which to scale the element"))
+      .make_available([](bNode &node) { node.custom2 = GEO_NODE_SCALE_ELEMENTS_SINGLE_AXIS; });
   b.add_output<decl::Geometry>(N_("Geometry"));
 };
 
@@ -396,7 +397,7 @@ static void scale_edges_on_axis(MeshComponent &mesh_component, const AxisScaleFi
 static void node_geo_exec(GeoNodeExecParams params)
 {
   const bNode &node = params.node();
-  const AttributeDomain domain = static_cast<AttributeDomain>(node.custom1);
+  const eAttrDomain domain = static_cast<eAttrDomain>(node.custom1);
   const GeometryNodeScaleElementsMode scale_mode = static_cast<GeometryNodeScaleElementsMode>(
       node.custom2);
 

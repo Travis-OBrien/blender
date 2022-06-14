@@ -287,7 +287,7 @@ static void ptile_restore_runtime_list(ListBase *paint_tiles)
       ibuf->userflags |= IB_RECT_INVALID; /* force recreate of char rect */
     }
     if (ibuf->mipmap[0]) {
-      ibuf->userflags |= IB_MIPMAP_INVALID; /* force mip-map recreation. */
+      ibuf->userflags |= IB_MIPMAP_INVALID; /* Force MIP-MAP recreation. */
     }
     ibuf->userflags |= IB_DISPLAY_BUFFER_INVALID;
 
@@ -557,7 +557,8 @@ static void uhandle_restore_list(ListBase *undo_handles, bool use_init)
 
     if (changed) {
       BKE_image_mark_dirty(image, ibuf);
-      BKE_image_free_gputextures(image); /* force OpenGL reload */
+      /* TODO(jbakker): only mark areas that are actually updated to improve performance. */
+      BKE_image_partial_update_mark_full_update(image);
 
       if (ibuf->rect_float) {
         ibuf->userflags |= IB_RECT_INVALID; /* force recreate of char rect */
@@ -1039,7 +1040,7 @@ static ImageUndoStep *image_undo_push_begin(const char *name, int paint_mode)
   bContext *C = NULL; /* special case, we never read from this. */
   UndoStep *us_p = BKE_undosys_step_push_init_with_type(ustack, C, name, BKE_UNDOSYS_TYPE_IMAGE);
   ImageUndoStep *us = (ImageUndoStep *)us_p;
-  BLI_assert(ELEM(paint_mode, PAINT_MODE_TEXTURE_2D, PAINT_MODE_TEXTURE_3D));
+  BLI_assert(ELEM(paint_mode, PAINT_MODE_TEXTURE_2D, PAINT_MODE_TEXTURE_3D, PAINT_MODE_SCULPT));
   us->paint_mode = paint_mode;
   return us;
 }

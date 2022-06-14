@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-# <pep8-80 compliant>
-
 __all__ = (
     "ExportHelper",
     "ImportHelper",
@@ -344,7 +342,6 @@ def create_derived_objects(depsgraph, objects):
     :rtype: dict
     """
     result = {}
-    has_instancer = False
     for ob in objects:
         ob_parent = ob.parent
         if ob_parent and ob_parent.instance_type in {'VERTS', 'FACES'}:

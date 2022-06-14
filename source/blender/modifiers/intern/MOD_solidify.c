@@ -24,6 +24,7 @@
 #include "UI_resources.h"
 
 #include "RNA_access.h"
+#include "RNA_prototypes.h"
 
 #include "MOD_modifiertypes.h"
 #include "MOD_ui_common.h"
@@ -74,7 +75,7 @@ static Mesh *modifyMesh(ModifierData *md, const ModifierEvalContext *ctx, Mesh *
     case MOD_SOLIDIFY_MODE_NONMANIFOLD:
       return MOD_solidify_nonmanifold_modifyMesh(md, ctx, mesh);
     default:
-      BLI_assert(0);
+      BLI_assert_unreachable();
   }
   return mesh;
 }

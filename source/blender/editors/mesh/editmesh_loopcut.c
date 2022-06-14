@@ -208,12 +208,15 @@ static void ringsel_finish(bContext *C, wmOperator *op)
 
         EDBM_selectmode_flush_ex(lcd->em, SCE_SELECT_VERTEX);
       }
-      /* we can't slide multiple edges in vertex select mode */
+      /* We can't slide multiple edges in vertex select mode, force edge select mode. Do this for
+       * all meshes in multi-object editmode so their selectmode is in sync for following
+       * operators. */
       else if (is_macro && (cuts > 1) && (em->selectmode & SCE_SELECT_VERTEX)) {
-        EDBM_selectmode_disable(lcd->vc.scene, em, SCE_SELECT_VERTEX, SCE_SELECT_EDGE);
+        EDBM_selectmode_disable_multi(C, SCE_SELECT_VERTEX, SCE_SELECT_EDGE);
       }
-      /* Force edge slide to edge select mode in face select mode. */
-      else if (EDBM_selectmode_disable(lcd->vc.scene, em, SCE_SELECT_FACE, SCE_SELECT_EDGE)) {
+      /* Force edge slide to edge select mode in face select mode. Do this for all meshes in
+       * multi-object editmode so their selectmode is in sync for following operators. */
+      else if (EDBM_selectmode_disable_multi(C, SCE_SELECT_FACE, SCE_SELECT_EDGE)) {
         /* pass, the change will flush selection */
       }
       else {
@@ -581,7 +584,7 @@ static int loopcut_modal(bContext *C, wmOperator *op, const wmEvent *event)
         handled = true;
         break;
       case MOUSEPAN:
-        if (event->alt == 0) {
+        if ((event->modifier & KM_ALT) == 0) {
           cuts += 0.02f * (event->xy[1] - event->prev_xy[1]);
           if (cuts < 1 && lcd->cuts >= 1) {
             cuts = 1;
@@ -598,7 +601,7 @@ static int loopcut_modal(bContext *C, wmOperator *op, const wmEvent *event)
         if (event->val == KM_RELEASE) {
           break;
         }
-        if (event->alt == 0) {
+        if ((event->modifier & KM_ALT) == 0) {
           cuts += 1;
         }
         else {
@@ -612,7 +615,7 @@ static int loopcut_modal(bContext *C, wmOperator *op, const wmEvent *event)
         if (event->val == KM_RELEASE) {
           break;
         }
-        if (event->alt == 0) {
+        if ((event->modifier & KM_ALT) == 0) {
           cuts = max_ff(cuts - 1, 1);
         }
         else {
@@ -755,7 +758,8 @@ void MESH_OT_loopcut(wmOperatorType *ot)
   RNA_def_property_enum_items(prop, rna_enum_proportional_falloff_curve_only_items);
   RNA_def_property_enum_default(prop, PROP_INVSQUARE);
   RNA_def_property_ui_text(prop, "Falloff", "Falloff type the feather");
-  RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
+  RNA_def_property_translation_context(prop,
+                                       BLT_I18NCONTEXT_ID_CURVE_LEGACY); /* Abusing id_curve :/ */
 
   /* For redo only. */
   prop = RNA_def_int(ot->srna, "object_index", -1, -1, INT_MAX, "Object Index", "", 0, INT_MAX);

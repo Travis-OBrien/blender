@@ -131,6 +131,9 @@ bool SEQ_collection_remove_strip(struct Sequence *seq, SeqCollection *collection
  * \param collection: collection to be freed
  */
 void SEQ_collection_free(SeqCollection *collection);
+/** Quiet compiler warning for free function. */
+#define SEQ_collection_free_void_p ((GHashValFreeFP)SEQ_collection_free)
+
 /**
  * Move strips from collection_src to collection_dst. Source collection will be freed.
  *
@@ -208,7 +211,8 @@ SeqCollection *SEQ_query_all_strips_recursive(ListBase *seqbase);
  * \param displayed_channel: viewed channel. when set to 0, no channel filter is applied
  * \return strip collection
  */
-SeqCollection *SEQ_query_rendered_strips(ListBase *seqbase,
+SeqCollection *SEQ_query_rendered_strips(ListBase *channels,
+                                         ListBase *seqbase,
                                          int timeline_frame,
                                          int displayed_channel);
 /**

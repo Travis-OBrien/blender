@@ -10,7 +10,7 @@
 #include "BLI_utildefines.h"
 
 #include "BLI_listbase.h"
-#include "BLI_math.h"
+#include "BLI_math_vector.h"
 
 #include "DNA_defaults.h"
 #include "DNA_gpencil_modifier_types.h"
@@ -47,7 +47,6 @@
 
 #include "DEG_depsgraph.h"
 #include "DEG_depsgraph_build.h"
-#include "DEG_depsgraph_query.h"
 
 static void initData(GpencilModifierData *md)
 {
@@ -261,32 +260,12 @@ static void bakeModifier(Main *UNUSED(bmain),
                          Object *ob)
 {
   TintGpencilModifierData *mmd = (TintGpencilModifierData *)md;
-  Scene *scene = DEG_get_evaluated_scene(depsgraph);
-  bGPdata *gpd = ob->data;
-  int oldframe = (int)DEG_get_ctime(depsgraph);
 
   if ((mmd->type == GP_TINT_GRADIENT) && (mmd->object == NULL)) {
     return;
   }
 
-  LISTBASE_FOREACH (bGPDlayer *, gpl, &gpd->layers) {
-    LISTBASE_FOREACH (bGPDframe *, gpf, &gpl->frames) {
-      /* apply effects on this frame
-       * NOTE: this assumes that we don't want animation on non-keyframed frames
-       */
-      CFRA = gpf->framenum;
-      BKE_scene_graph_update_for_newframe(depsgraph);
-
-      /* compute effects on this frame */
-      LISTBASE_FOREACH (bGPDstroke *, gps, &gpf->strokes) {
-        deformStroke(md, depsgraph, ob, gpl, gpf, gps);
-      }
-    }
-  }
-
-  /* return frame state and DB to original state */
-  CFRA = oldframe;
-  BKE_scene_graph_update_for_newframe(depsgraph);
+  generic_bake_deform_stroke(depsgraph, md, ob, true, deformStroke);
 }
 
 static void freeData(GpencilModifierData *md)

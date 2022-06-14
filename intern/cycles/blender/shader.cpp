@@ -32,7 +32,8 @@ typedef map<string, ConvertNode *> ProxyMap;
 
 void BlenderSync::find_shader(BL::ID &id, array<Node *> &used_shaders, Shader *default_shader)
 {
-  Shader *shader = (id) ? shader_map.find(id) : default_shader;
+  Shader *synced_shader = (id) ? shader_map.find(id) : nullptr;
+  Shader *shader = (synced_shader) ? synced_shader : default_shader;
 
   used_shaders.push_back_slow(shader);
   shader->tag_used(scene);
@@ -270,6 +271,7 @@ static ShaderNode *add_node(Scene *scene,
     curves->set_min_x(min_x);
     curves->set_max_x(max_x);
     curves->set_curves(curve_mapping_curves);
+    curves->set_extrapolate(mapping.extend() == mapping.extend_EXTRAPOLATED);
     node = curves;
   }
   if (b_node.is_a(&RNA_ShaderNodeVectorCurve)) {
@@ -283,6 +285,7 @@ static ShaderNode *add_node(Scene *scene,
     curves->set_min_x(min_x);
     curves->set_max_x(max_x);
     curves->set_curves(curve_mapping_curves);
+    curves->set_extrapolate(mapping.extend() == mapping.extend_EXTRAPOLATED);
     node = curves;
   }
   else if (b_node.is_a(&RNA_ShaderNodeFloatCurve)) {
@@ -296,6 +299,7 @@ static ShaderNode *add_node(Scene *scene,
     curve->set_min_x(min_x);
     curve->set_max_x(max_x);
     curve->set_curve(curve_mapping_curve);
+    curve->set_extrapolate(mapping.extend() == mapping.extend_EXTRAPOLATED);
     node = curve;
   }
   else if (b_node.is_a(&RNA_ShaderNodeValToRGB)) {
@@ -350,6 +354,18 @@ static ShaderNode *add_node(Scene *scene,
   }
   else if (b_node.is_a(&RNA_ShaderNodeCombineHSV)) {
     node = graph->create_node<CombineHSVNode>();
+  }
+  else if (b_node.is_a(&RNA_ShaderNodeSeparateColor)) {
+    BL::ShaderNodeSeparateColor b_separate_node(b_node);
+    SeparateColorNode *separate_node = graph->create_node<SeparateColorNode>();
+    separate_node->set_color_type((NodeCombSepColorType)b_separate_node.mode());
+    node = separate_node;
+  }
+  else if (b_node.is_a(&RNA_ShaderNodeCombineColor)) {
+    BL::ShaderNodeCombineColor b_combine_node(b_node);
+    CombineColorNode *combine_node = graph->create_node<CombineColorNode>();
+    combine_node->set_color_type((NodeCombSepColorType)b_combine_node.mode());
+    node = combine_node;
   }
   else if (b_node.is_a(&RNA_ShaderNodeSeparateXYZ)) {
     node = graph->create_node<SeparateXYZNode>();
@@ -760,9 +776,21 @@ static ShaderNode *add_node(Scene *scene,
          */
         int scene_frame = b_scene.frame_current();
         int image_frame = image_user_frame_number(b_image_user, b_image, scene_frame);
-        image->handle = scene->image_manager->add_image(
-            new BlenderImageLoader(b_image, image_frame, b_engine.is_preview()),
-            image->image_params());
+        if (b_image.source() != BL::Image::source_TILED) {
+          image->handle = scene->image_manager->add_image(
+              new BlenderImageLoader(b_image, image_frame, 0, b_engine.is_preview()),
+              image->image_params());
+        }
+        else {
+          vector<ImageLoader *> loaders;
+          loaders.reserve(image->get_tiles().size());
+          for (int tile_number : image->get_tiles()) {
+            loaders.push_back(
+                new BlenderImageLoader(b_image, image_frame, tile_number, b_engine.is_preview()));
+          }
+
+          image->handle = scene->image_manager->add_image(loaders, image->image_params());
+        }
       }
       else {
         ustring filename = ustring(
@@ -798,7 +826,7 @@ static ShaderNode *add_node(Scene *scene,
         int scene_frame = b_scene.frame_current();
         int image_frame = image_user_frame_number(b_image_user, b_image, scene_frame);
         env->handle = scene->image_manager->add_image(
-            new BlenderImageLoader(b_image, image_frame, b_engine.is_preview()),
+            new BlenderImageLoader(b_image, image_frame, 0, b_engine.is_preview()),
             env->image_params());
       }
       else {
@@ -1528,6 +1556,8 @@ void BlenderSync::sync_world(BL::Depsgraph &b_depsgraph, BL::SpaceView3D &b_v3d,
   background->set_use_shader(view_layer.use_background_shader ||
                              viewport_parameters.use_custom_shader());
 
+  background->set_lightgroup(ustring(b_world ? b_world.lightgroup() : ""));
+
   background->tag_update(scene);
 }
 
@@ -1573,18 +1603,13 @@ void BlenderSync::sync_lights(BL::Depsgraph &b_depsgraph, bool update_all)
   }
 }
 
-void BlenderSync::sync_shaders(BL::Depsgraph &b_depsgraph, BL::SpaceView3D &b_v3d)
+void BlenderSync::sync_shaders(BL::Depsgraph &b_depsgraph, BL::SpaceView3D &b_v3d, bool update_all)
 {
-  /* for auto refresh images */
-  ImageManager *image_manager = scene->image_manager;
-  const int frame = b_scene.frame_current();
-  const bool auto_refresh_update = image_manager->set_animation_frame_update(frame);
-
   shader_map.pre_sync();
 
-  sync_world(b_depsgraph, b_v3d, auto_refresh_update);
-  sync_lights(b_depsgraph, auto_refresh_update);
-  sync_materials(b_depsgraph, auto_refresh_update);
+  sync_world(b_depsgraph, b_v3d, update_all);
+  sync_lights(b_depsgraph, update_all);
+  sync_materials(b_depsgraph, update_all);
 }
 
 CCL_NAMESPACE_END

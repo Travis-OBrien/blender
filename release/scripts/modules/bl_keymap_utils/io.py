@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-# <pep8 compliant>
-
 # -----------------------------------------------------------------------------
 # Export Functions
 
@@ -52,6 +50,8 @@ def kmi_args_as_data(kmi):
                 s.append(f"\"{attr:s}\": " + ("-1" if mod == -1 else "True"))
     if (mod := kmi.key_modifier) and (mod != 'NONE'):
         s.append(f"\"key_modifier\": '{mod:s}'")
+    if (direction := kmi.direction) and (direction != 'ANY'):
+        s.append(f"\"direction\": '{direction:s}'")
 
     if kmi.repeat:
         if (

@@ -25,6 +25,7 @@
 #include "BLI_utildefines.h"
 
 #include "BKE_image.h"
+#include "BKE_image_format.h"
 #include "BKE_ocean.h"
 #include "ocean_intern.h"
 
@@ -47,7 +48,7 @@ static float nextfr(RNG *rng, float min, float max)
 static float gaussRand(RNG *rng)
 {
   /* NOTE: to avoid numerical problems with very small numbers, we make these variables
-   * singe-precision floats, but later we call the double-precision log() and sqrt() functions
+   * single-precision floats, but later we call the double-precision log() and sqrt() functions
    * instead of logf() and sqrtf(). */
   float x;
   float y;

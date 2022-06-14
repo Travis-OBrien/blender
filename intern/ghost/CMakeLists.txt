@@ -344,6 +344,11 @@ elseif(WITH_GHOST_X11 OR WITH_GHOST_WAYLAND)
       relative-pointer
       "${WAYLAND_PROTOCOLS_DIR}/unstable/relative-pointer/relative-pointer-unstable-v1.xml"
     )
+    # Tablet.
+    generate_protocol_bindings(
+      tablet
+      "${WAYLAND_PROTOCOLS_DIR}/unstable/tablet/tablet-unstable-v2.xml"
+    )
 
     add_definitions(-DWITH_GHOST_WAYLAND)
   endif()
@@ -376,6 +381,7 @@ elseif(WIN32)
     intern/GHOST_DisplayManagerWin32.cpp
     intern/GHOST_DropTargetWin32.cpp
     intern/GHOST_SystemWin32.cpp
+    intern/GHOST_TrackpadWin32.cpp
     intern/GHOST_WindowWin32.cpp
     intern/GHOST_Wintab.cpp
 
@@ -384,6 +390,7 @@ elseif(WIN32)
     intern/GHOST_DropTargetWin32.h
     intern/GHOST_SystemWin32.h
     intern/GHOST_TaskbarWin32.h
+    intern/GHOST_TrackpadWin32.h
     intern/GHOST_WindowWin32.h
     intern/GHOST_Wintab.h
   )

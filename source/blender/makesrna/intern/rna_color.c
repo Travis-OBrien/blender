@@ -157,7 +157,7 @@ static void rna_CurveMapping_clipmaxy_range(
   *max = 100.0f;
 }
 
-static char *rna_ColorRamp_path(PointerRNA *ptr)
+static char *rna_ColorRamp_path(const PointerRNA *ptr)
 {
   char *path = NULL;
 
@@ -173,11 +173,7 @@ static char *rna_ColorRamp_path(PointerRNA *ptr)
         char *node_path;
 
         for (node = ntree->nodes.first; node; node = node->next) {
-          if (ELEM(node->type,
-                   SH_NODE_VALTORGB,
-                   CMP_NODE_VALTORGB,
-                   TEX_NODE_VALTORGB,
-                   GEO_NODE_LEGACY_ATTRIBUTE_COLOR_RAMP)) {
+          if (ELEM(node->type, SH_NODE_VALTORGB, CMP_NODE_VALTORGB, TEX_NODE_VALTORGB)) {
             if (node->storage == ptr->data) {
               /* all node color ramp properties called 'color_ramp'
                * prepend path from ID to the node
@@ -212,7 +208,7 @@ static char *rna_ColorRamp_path(PointerRNA *ptr)
   return path;
 }
 
-static char *rna_ColorRampElement_path(PointerRNA *ptr)
+static char *rna_ColorRampElement_path(const PointerRNA *ptr)
 {
   PointerRNA ramp_ptr;
   PropertyRNA *prop;
@@ -304,11 +300,7 @@ static void rna_ColorRamp_update(Main *bmain, Scene *UNUSED(scene), PointerRNA *
         bNode *node;
 
         for (node = ntree->nodes.first; node; node = node->next) {
-          if (ELEM(node->type,
-                   SH_NODE_VALTORGB,
-                   CMP_NODE_VALTORGB,
-                   TEX_NODE_VALTORGB,
-                   GEO_NODE_LEGACY_ATTRIBUTE_COLOR_RAMP)) {
+          if (ELEM(node->type, SH_NODE_VALTORGB, CMP_NODE_VALTORGB, TEX_NODE_VALTORGB)) {
             BKE_ntree_update_tag_node_property(ntree, node);
             ED_node_tree_propagate_change(NULL, bmain, ntree);
           }
@@ -446,7 +438,7 @@ static void rna_ColorManagedDisplaySettings_display_device_update(Main *bmain,
   }
 }
 
-static char *rna_ColorManagedDisplaySettings_path(PointerRNA *UNUSED(ptr))
+static char *rna_ColorManagedDisplaySettings_path(const PointerRNA *UNUSED(ptr))
 {
   return BLI_strdup("display_settings");
 }
@@ -534,7 +526,7 @@ static void rna_ColorManagedViewSettings_use_curves_set(PointerRNA *ptr, bool va
   }
 }
 
-static char *rna_ColorManagedViewSettings_path(PointerRNA *UNUSED(ptr))
+static char *rna_ColorManagedViewSettings_path(const PointerRNA *UNUSED(ptr))
 {
   return BLI_strdup("view_settings");
 }
@@ -613,6 +605,11 @@ static void rna_ColorManagedColorspaceSettings_reload_update(Main *bmain,
 {
   ID *id = ptr->owner_id;
 
+  if (!id) {
+    /* Happens for color space settings on operators. */
+    return;
+  }
+
   if (GS(id->name) == ID_IM) {
     Image *ima = (Image *)id;
 
@@ -665,12 +662,12 @@ static void rna_ColorManagedColorspaceSettings_reload_update(Main *bmain,
   }
 }
 
-static char *rna_ColorManagedSequencerColorspaceSettings_path(PointerRNA *UNUSED(ptr))
+static char *rna_ColorManagedSequencerColorspaceSettings_path(const PointerRNA *UNUSED(ptr))
 {
   return BLI_strdup("sequencer_colorspace_settings");
 }
 
-static char *rna_ColorManagedInputColorspaceSettings_path(PointerRNA *UNUSED(ptr))
+static char *rna_ColorManagedInputColorspaceSettings_path(const PointerRNA *UNUSED(ptr))
 {
   return BLI_strdup("colorspace_settings");
 }

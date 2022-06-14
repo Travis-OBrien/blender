@@ -6,9 +6,9 @@
 #include "BKE_spline.hh"
 
 using blender::float3;
+using blender::GVArray;
 using blender::MutableSpan;
 using blender::Span;
-using blender::fn::GVArray;
 
 void PolySpline::copy_settings(Spline &UNUSED(dst)) const
 {
@@ -76,7 +76,7 @@ void PolySpline::mark_cache_invalid()
   length_cache_dirty_ = true;
 }
 
-int PolySpline::evaluated_points_size() const
+int PolySpline::evaluated_points_num() const
 {
   return this->size();
 }

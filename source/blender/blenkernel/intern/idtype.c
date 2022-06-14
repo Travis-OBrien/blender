@@ -33,7 +33,7 @@ uint BKE_idtype_cache_key_hash(const void *key_v)
   const IDCacheKey *key = key_v;
   size_t hash = BLI_ghashutil_uinthash(key->id_session_uuid);
   hash = BLI_ghashutil_combine_hash(hash, BLI_ghashutil_uinthash((uint)key->offset_in_ID));
-  return (uint)BLI_ghashutil_combine_hash(hash, BLI_ghashutil_ptrhash(key->cache_v));
+  return (uint)hash;
 }
 
 bool BKE_idtype_cache_key_cmp(const void *key_a_v, const void *key_b_v)
@@ -41,7 +41,7 @@ bool BKE_idtype_cache_key_cmp(const void *key_a_v, const void *key_b_v)
   const IDCacheKey *key_a = key_a_v;
   const IDCacheKey *key_b = key_b_v;
   return (key_a->id_session_uuid != key_b->id_session_uuid) ||
-         (key_a->offset_in_ID != key_b->offset_in_ID) || (key_a->cache_v != key_b->cache_v);
+         (key_a->offset_in_ID != key_b->offset_in_ID);
 }
 
 static IDTypeInfo *id_types[INDEX_ID_MAX] = {NULL};
@@ -59,7 +59,7 @@ static void id_type_init(void)
   INIT_TYPE(ID_LI);
   INIT_TYPE(ID_OB);
   INIT_TYPE(ID_ME);
-  INIT_TYPE(ID_CU);
+  INIT_TYPE(ID_CU_LEGACY);
   INIT_TYPE(ID_MB);
   INIT_TYPE(ID_MA);
   INIT_TYPE(ID_TE);
@@ -215,7 +215,7 @@ uint64_t BKE_idtype_idcode_to_idfilter(const short idcode)
     CASE_IDFILTER(BR);
     CASE_IDFILTER(CA);
     CASE_IDFILTER(CF);
-    CASE_IDFILTER(CU);
+    CASE_IDFILTER(CU_LEGACY);
     CASE_IDFILTER(GD);
     CASE_IDFILTER(GR);
     CASE_IDFILTER(CV);
@@ -264,7 +264,7 @@ short BKE_idtype_idcode_from_idfilter(const uint64_t idfilter)
     CASE_IDFILTER(BR);
     CASE_IDFILTER(CA);
     CASE_IDFILTER(CF);
-    CASE_IDFILTER(CU);
+    CASE_IDFILTER(CU_LEGACY);
     CASE_IDFILTER(GD);
     CASE_IDFILTER(GR);
     CASE_IDFILTER(CV);
@@ -312,7 +312,7 @@ int BKE_idtype_idcode_to_index(const short idcode)
     CASE_IDINDEX(BR);
     CASE_IDINDEX(CA);
     CASE_IDINDEX(CF);
-    CASE_IDINDEX(CU);
+    CASE_IDINDEX(CU_LEGACY);
     CASE_IDINDEX(GD);
     CASE_IDINDEX(GR);
     CASE_IDINDEX(CV);
@@ -371,7 +371,7 @@ short BKE_idtype_idcode_from_index(const int index)
     CASE_IDCODE(BR);
     CASE_IDCODE(CA);
     CASE_IDCODE(CF);
-    CASE_IDCODE(CU);
+    CASE_IDCODE(CU_LEGACY);
     CASE_IDCODE(GD);
     CASE_IDCODE(GR);
     CASE_IDCODE(CV);

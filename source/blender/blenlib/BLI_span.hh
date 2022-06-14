@@ -307,13 +307,14 @@ template<typename T> class Span {
   }
 
   /**
-   * Returns a reference to the last element in the array. This invokes undefined behavior when the
-   * array is empty.
+   * Returns a reference to the nth last element. This invokes undefined behavior when the span is
+   * too short.
    */
-  constexpr const T &last() const
+  constexpr const T &last(const int64_t n = 0) const
   {
-    BLI_assert(size_ > 0);
-    return data_[size_ - 1];
+    BLI_assert(n >= 0);
+    BLI_assert(n < size_);
+    return data_[size_ - 1 - n];
   }
 
   /**
@@ -673,13 +674,14 @@ template<typename T> class MutableSpan {
   }
 
   /**
-   * Returns a reference to the last element. This invokes undefined behavior when the array is
-   * empty.
+   * Returns a reference to the nth last element. This invokes undefined behavior when the span is
+   * too short.
    */
-  constexpr T &last() const
+  constexpr T &last(const int64_t n = 0) const
   {
-    BLI_assert(size_ > 0);
-    return data_[size_ - 1];
+    BLI_assert(n >= 0);
+    BLI_assert(n < size_);
+    return data_[size_ - 1 - n];
   }
 
   /**
@@ -719,5 +721,17 @@ template<typename T> class MutableSpan {
     return MutableSpan<NewT>((NewT *)data_, new_size);
   }
 };
+
+/** This is defined here, because in `BLI_index_range.hh` `Span` is not yet defined. */
+inline Span<int64_t> IndexRange::as_span() const
+{
+  const int64_t min_required_size = start_ + size_;
+  const int64_t current_array_size = s_current_array_size.load(std::memory_order_acquire);
+  const int64_t *current_array = s_current_array.load(std::memory_order_acquire);
+  if (min_required_size <= current_array_size) {
+    return Span<int64_t>(current_array + start_, size_);
+  }
+  return this->as_span_internal();
+}
 
 } /* namespace blender */

@@ -104,7 +104,7 @@ void PointCloudComponent::ensure_owns_direct_data()
 /** \name Attribute Access
  * \{ */
 
-int PointCloudComponent::attribute_domain_size(const AttributeDomain domain) const
+int PointCloudComponent::attribute_domain_num(const eAttrDomain domain) const
 {
   if (pointcloud_ == nullptr) {
     return 0;
@@ -117,18 +117,6 @@ int PointCloudComponent::attribute_domain_size(const AttributeDomain domain) con
 
 namespace blender::bke {
 
-template<typename T>
-static GVArray make_array_read_attribute(const void *data, const int domain_size)
-{
-  return VArray<T>::ForSpan(Span<T>((const T *)data, domain_size));
-}
-
-template<typename T>
-static GVMutableArray make_array_write_attribute(void *data, const int domain_size)
-{
-  return VMutableArray<T>::ForSpan(MutableSpan<T>((T *)data, domain_size));
-}
-
 /**
  * In this function all the attribute providers for a point cloud component are created. Most data
  * in this function is statically allocated, because it does not change over time.
@@ -137,8 +125,7 @@ static ComponentAttributeProviders create_attribute_providers_for_point_cloud()
 {
   static auto update_custom_data_pointers = [](GeometryComponent &component) {
     PointCloudComponent &pointcloud_component = static_cast<PointCloudComponent &>(component);
-    PointCloud *pointcloud = pointcloud_component.get_for_write();
-    if (pointcloud != nullptr) {
+    if (PointCloud *pointcloud = pointcloud_component.get_for_write()) {
       BKE_pointcloud_update_customdata_pointers(pointcloud);
     }
   };

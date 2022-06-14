@@ -32,13 +32,13 @@
 #include "UI_resources.h"
 
 #include "RNA_access.h"
+#include "RNA_prototypes.h"
 
 #include "MOD_ui_common.h"
 #include "MOD_util.h"
 
 #include "BLO_read_write.h"
 
-#include "BKE_curveprofile.h"
 #include "bmesh.h"
 #include "bmesh_tools.h"
 
@@ -110,6 +110,7 @@ static Mesh *modifyMesh(ModifierData *md, const ModifierEvalContext *ctx, Mesh *
                             &(struct BMeshCreateParams){0},
                             &(struct BMeshFromMeshParams){
                                 .calc_face_normal = true,
+                                .calc_vert_normal = true,
                                 .add_key_index = false,
                                 .use_shapekey = false,
                                 .active_shapekey = 0,
@@ -226,8 +227,6 @@ static Mesh *modifyMesh(ModifierData *md, const ModifierEvalContext *ctx, Mesh *
   BLI_assert(bm->vtoolflagpool == NULL && bm->etoolflagpool == NULL && bm->ftoolflagpool == NULL);
 
   BM_mesh_free(bm);
-
-  BKE_mesh_normals_tag_dirty(result);
 
   return result;
 }
@@ -396,9 +395,11 @@ static void panelRegister(ARegionType *region_type)
       region_type, "shading", "Shading", NULL, shading_panel_draw, panel_type);
 }
 
-static void blendWrite(BlendWriter *writer, const ModifierData *md)
+static void blendWrite(BlendWriter *writer, const ID *UNUSED(id_owner), const ModifierData *md)
 {
   const BevelModifierData *bmd = (const BevelModifierData *)md;
+
+  BLO_write_struct(writer, BevelModifierData, bmd);
 
   if (bmd->custom_profile) {
     BKE_curveprofile_blend_write(writer, bmd->custom_profile);

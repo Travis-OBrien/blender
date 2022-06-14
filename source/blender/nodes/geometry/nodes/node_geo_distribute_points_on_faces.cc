@@ -26,17 +26,35 @@ namespace blender::nodes::node_geo_distribute_points_on_faces_cc {
 
 static void node_declare(NodeDeclarationBuilder &b)
 {
+  auto enable_random = [](bNode &node) {
+    node.custom1 = GEO_NODE_POINT_DISTRIBUTE_POINTS_ON_FACES_RANDOM;
+  };
+  auto enable_poisson = [](bNode &node) {
+    node.custom1 = GEO_NODE_POINT_DISTRIBUTE_POINTS_ON_FACES_POISSON;
+  };
+
   b.add_input<decl::Geometry>(N_("Mesh")).supported_type(GEO_COMPONENT_TYPE_MESH);
   b.add_input<decl::Bool>(N_("Selection")).default_value(true).hide_value().supports_field();
-  b.add_input<decl::Float>(N_("Distance Min")).min(0.0f).subtype(PROP_DISTANCE);
-  b.add_input<decl::Float>(N_("Density Max")).default_value(10.0f).min(0.0f);
-  b.add_input<decl::Float>(N_("Density")).default_value(10.0f).min(0.0f).supports_field();
+  b.add_input<decl::Float>(N_("Distance Min"))
+      .min(0.0f)
+      .subtype(PROP_DISTANCE)
+      .make_available(enable_poisson);
+  b.add_input<decl::Float>(N_("Density Max"))
+      .default_value(10.0f)
+      .min(0.0f)
+      .make_available(enable_poisson);
+  b.add_input<decl::Float>(N_("Density"))
+      .default_value(10.0f)
+      .min(0.0f)
+      .supports_field()
+      .make_available(enable_random);
   b.add_input<decl::Float>(N_("Density Factor"))
       .default_value(1.0f)
       .min(0.0f)
       .max(1.0f)
       .subtype(PROP_FACTOR)
-      .supports_field();
+      .supports_field()
+      .make_available(enable_poisson);
   b.add_input<decl::Int>(N_("Seed"));
 
   b.add_output<decl::Geometry>(N_("Points"));
@@ -114,10 +132,8 @@ static void sample_mesh_surface(const Mesh &mesh,
     const int looptri_seed = noise::hash(looptri_index, seed);
     RandomNumberGenerator looptri_rng(looptri_seed);
 
-    const float points_amount_fl = area * base_density * looptri_density_factor;
-    const float add_point_probability = fractf(points_amount_fl);
-    const bool add_point = add_point_probability > looptri_rng.get_float();
-    const int point_amount = (int)points_amount_fl + (int)add_point;
+    const int point_amount = looptri_rng.round_probabilistic(area * base_density *
+                                                             looptri_density_factor);
 
     for (int i = 0; i < point_amount; i++) {
       const float3 bary_coord = looptri_rng.get_barycentric_coordinates();
@@ -152,6 +168,7 @@ BLI_NOINLINE static void update_elimination_mask_for_close_points(
   }
 
   KDTree_3d *kdtree = build_kdtree(positions);
+  BLI_SCOPED_DEFER([&]() { BLI_kdtree_3d_free(kdtree); });
 
   for (const int i : positions.index_range()) {
     if (elimination_mask[i]) {
@@ -176,8 +193,6 @@ BLI_NOINLINE static void update_elimination_mask_for_close_points(
         },
         &callback_data);
   }
-
-  BLI_kdtree_3d_free(kdtree);
 }
 
 BLI_NOINLINE static void update_elimination_mask_based_on_density_factors(
@@ -232,7 +247,7 @@ BLI_NOINLINE static void eliminate_points_based_on_mask(const Span<bool> elimina
 BLI_NOINLINE static void interpolate_attribute(const Mesh &mesh,
                                                const Span<float3> bary_coords,
                                                const Span<int> looptri_indices,
-                                               const AttributeDomain source_domain,
+                                               const eAttrDomain source_domain,
                                                const GVArray &source_data,
                                                GMutableSpan output_data)
 {
@@ -278,7 +293,7 @@ BLI_NOINLINE static void propagate_existing_attributes(
 
   for (Map<AttributeIDRef, AttributeKind>::Item entry : attributes.items()) {
     const AttributeIDRef attribute_id = entry.key;
-    const CustomDataType output_data_type = entry.value.data_type;
+    const eCustomDataType output_data_type = entry.value.data_type;
 
     ReadAttributeLookup source_attribute = mesh_component.attribute_try_get_for_read(attribute_id);
     if (!source_attribute) {
@@ -381,13 +396,13 @@ static Array<float> calc_full_density_factors_with_selection(const MeshComponent
                                                              const Field<float> &density_field,
                                                              const Field<bool> &selection_field)
 {
-  const AttributeDomain attribute_domain = ATTR_DOMAIN_CORNER;
+  const eAttrDomain attribute_domain = ATTR_DOMAIN_CORNER;
   GeometryComponentFieldContext field_context{component, attribute_domain};
-  const int domain_size = component.attribute_domain_size(attribute_domain);
+  const int domain_num = component.attribute_domain_num(attribute_domain);
 
-  Array<float> densities(domain_size, 0.0f);
+  Array<float> densities(domain_num, 0.0f);
 
-  fn::FieldEvaluator evaluator{field_context, domain_size};
+  fn::FieldEvaluator evaluator{field_context, domain_num};
   evaluator.set_selection(selection_field);
   evaluator.add_with_destination(density_field, densities.as_mutable_span());
   evaluator.evaluate();

@@ -31,6 +31,7 @@ struct Curve;
 struct FluidsimSettings;
 struct GeometrySet;
 struct Ipo;
+struct LightgroupMembership;
 struct Material;
 struct Mesh;
 struct Object;
@@ -93,7 +94,7 @@ typedef struct BoundBox {
 
 /** #BoundBox.flag */
 enum {
-  BOUNDBOX_DISABLED = (1 << 0),
+  /* BOUNDBOX_DISABLED = (1 << 0), */ /* UNUSED */
   BOUNDBOX_DIRTY = (1 << 1),
 };
 
@@ -203,7 +204,7 @@ typedef struct Object_Runtime {
 
   float (*crazyspace_deform_imats)[3][3];
   float (*crazyspace_deform_cos)[3];
-  int crazyspace_num_verts;
+  int crazyspace_verts_num;
 
   int _pad3[3];
 } Object_Runtime;
@@ -233,6 +234,8 @@ enum eObjectLineArt_Flags {
 };
 
 typedef struct Object {
+  DNA_DEFINE_CXX_METHODS(Object)
+
   ID id;
   /** Animation data (must be immediately after id for utilities to use it). */
   struct AnimData *adt;
@@ -371,7 +374,7 @@ typedef struct Object {
   /** Dupliface scale. */
   float instance_faces_scale;
 
-  /** Custom index, for renderpasses. */
+  /** Custom index, for render-passes. */
   short index;
   /** Current deformation group, NOTE: index starts at 1. */
   unsigned short actdef DNA_DEPRECATED;
@@ -432,8 +435,10 @@ typedef struct Object {
 
   ObjectLineArt lineart;
 
+  /** Lightgroup membership information. */
+  struct LightgroupMembership *lightgroup;
+
   /** Runtime evaluation data (keep last). */
-  void *_pad9;
   Object_Runtime runtime;
 } Object;
 
@@ -471,7 +476,8 @@ typedef struct ObHook {
 enum {
   OB_EMPTY = 0,
   OB_MESH = 1,
-  OB_CURVE = 2,
+  /** Curve object is still used but replaced by "Curves" for the future (see T95355). */
+  OB_CURVES_LEGACY = 2,
   OB_SURF = 3,
   OB_FONT = 4,
   OB_MBALL = 5,
@@ -515,17 +521,28 @@ enum {
         OB_VOLUME))
 #define OB_TYPE_SUPPORT_VGROUP(_type) (ELEM(_type, OB_MESH, OB_LATTICE, OB_GPENCIL))
 #define OB_TYPE_SUPPORT_EDITMODE(_type) \
-  (ELEM(_type, OB_MESH, OB_FONT, OB_CURVE, OB_SURF, OB_MBALL, OB_LATTICE, OB_ARMATURE))
-#define OB_TYPE_SUPPORT_PARVERT(_type) (ELEM(_type, OB_MESH, OB_SURF, OB_CURVE, OB_LATTICE))
+  (ELEM(_type, \
+        OB_MESH, \
+        OB_FONT, \
+        OB_CURVES_LEGACY, \
+        OB_SURF, \
+        OB_MBALL, \
+        OB_LATTICE, \
+        OB_ARMATURE, \
+        OB_CURVES))
+#define OB_TYPE_SUPPORT_PARVERT(_type) \
+  (ELEM(_type, OB_MESH, OB_SURF, OB_CURVES_LEGACY, OB_LATTICE))
 
 /** Matches #OB_TYPE_SUPPORT_EDITMODE. */
-#define OB_DATA_SUPPORT_EDITMODE(_type) (ELEM(_type, ID_ME, ID_CU, ID_MB, ID_LT, ID_AR))
+#define OB_DATA_SUPPORT_EDITMODE(_type) \
+  (ELEM(_type, ID_ME, ID_CU_LEGACY, ID_MB, ID_LT, ID_AR) || \
+   (U.experimental.use_new_curves_tools && (_type) == ID_CV))
 
 /* is this ID type used as object data */
 #define OB_DATA_SUPPORT_ID(_id_type) \
   (ELEM(_id_type, \
         ID_ME, \
-        ID_CU, \
+        ID_CU_LEGACY, \
         ID_MB, \
         ID_LA, \
         ID_SPK, \
@@ -540,7 +557,7 @@ enum {
 
 #define OB_DATA_SUPPORT_ID_CASE \
   ID_ME: \
-  case ID_CU: \
+  case ID_CU_LEGACY: \
   case ID_MB: \
   case ID_LA: \
   case ID_SPK: \

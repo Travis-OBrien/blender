@@ -617,7 +617,7 @@ typedef struct UVProjectModifierData {
    */
   struct Object *projectors[10];
   char _pad2[4];
-  int num_projectors;
+  int projectors_num;
   float aspectx, aspecty;
   float scalex, scaley;
   /** MAX_CUSTOMDATA_LAYER_NAME. */
@@ -812,7 +812,7 @@ typedef struct HookModifierData {
 
   /** If NULL, it's using vertexgroup. */
   int *indexar;
-  int totindex;
+  int indexar_num;
   float force;
   /** Optional vertexgroup name, MAX_VGROUP_NAME. */
   char name[64];
@@ -895,7 +895,7 @@ typedef struct SurfaceModifierData {
   /** Bounding volume hierarchy of the mesh faces. */
   struct BVHTreeFromMesh *bvhtree;
 
-  int cfra, numverts;
+  int cfra, verts_num;
 } SurfaceModifierData;
 
 typedef struct BooleanModifierData {
@@ -945,7 +945,7 @@ typedef struct MDefInfluence {
 
 typedef struct MDefCell {
   int offset;
-  int totinfluence;
+  int influences_num;
 } MDefCell;
 
 typedef struct MeshDeformModifierData {
@@ -967,7 +967,7 @@ typedef struct MeshDeformModifierData {
   /** Coordinates that cage was bound with. */
   float *bindcagecos;
   /** Total vertices in mesh and cage. */
-  int totvert, totcagevert;
+  int verts_num, cage_verts_num;
 
   /* result of dynamic binding */
   /** Grid with dynamic binding cell points. */
@@ -979,7 +979,7 @@ typedef struct MeshDeformModifierData {
   /** Size of the dynamic bind grid. */
   int dyngridsize;
   /** Total number of vertex influences. */
-  int totinfluence;
+  int influences_num;
   /** Offset of the dynamic bind grid. */
   float dyncellmin[3];
   /** Width of dynamic bind cell. */
@@ -998,7 +998,7 @@ typedef struct MeshDeformModifierData {
                    struct MeshDeformModifierData *mmd,
                    struct Mesh *cagemesh,
                    float *vertexcos,
-                   int totvert,
+                   int verts_num,
                    float cagemat[4][4]);
 } MeshDeformModifierData;
 
@@ -1604,6 +1604,10 @@ enum {
   MOD_WVG_MIX_DIF = 6,
   /** Average of both weights. */
   MOD_WVG_MIX_AVG = 7,
+  /** Minimum of both weights. */
+  MOD_WVG_MIX_MIN = 8,
+  /** Maximum of both weights. */
+  MOD_WVG_MIX_MAX = 9,
 };
 
 /** #WeightVGMixModifierData.mix_set (what vertices to affect). */
@@ -1694,7 +1698,7 @@ enum {
   MOD_WVG_PROXIMITY_GEOM_FACES = (1 << 2),
   MOD_WVG_PROXIMITY_INVERT_VGROUP_MASK = (1 << 3),
   MOD_WVG_PROXIMITY_INVERT_FALLOFF = (1 << 4),
-  MOD_WVG_PROXIMITY_WEIGHTS_NORMALIZE = (1 << 3),
+  MOD_WVG_PROXIMITY_WEIGHTS_NORMALIZE = (1 << 5),
 };
 
 /* Defines common to all WeightVG modifiers. */
@@ -2014,7 +2018,7 @@ typedef struct LaplacianDeformModifierData {
   ModifierData modifier;
   /** MAX_VGROUP_NAME. */
   char anchor_grp_name[64];
-  int total_verts, repeat;
+  int verts_num, repeat;
   float *vertexco;
   /** Runtime only. */
   void *cache_system;
@@ -2099,9 +2103,9 @@ typedef struct DataTransferModifierData {
   char _pad1[4];
 
   /** DT_MULTILAYER_INDEX_MAX; See DT_FROMLAYERS_ enum in ED_object.h. */
-  int layers_select_src[4];
+  int layers_select_src[5];
   /** DT_MULTILAYER_INDEX_MAX; See DT_TOLAYERS_ enum in ED_object.h. */
-  int layers_select_dst[4];
+  int layers_select_dst[5];
 
   /** See CDT_MIX_ enum in BKE_customdata.h. */
   int mix_mode;
@@ -2197,7 +2201,7 @@ enum {
 
 typedef struct SDefBind {
   unsigned int *vert_inds;
-  unsigned int numverts;
+  unsigned int verts_num;
   int mode;
   float *vert_weights;
   float normal_dist;
@@ -2206,7 +2210,7 @@ typedef struct SDefBind {
 
 typedef struct SDefVert {
   SDefBind *binds;
-  unsigned int numbinds;
+  unsigned int binds_num;
   unsigned int vertex_idx;
 } SDefVert;
 
@@ -2218,13 +2222,19 @@ typedef struct SurfaceDeformModifierData {
   struct Object *target;
   /** Vertex bind data. */
   SDefVert *verts;
+  void *_pad1;
   float falloff;
-  unsigned int num_mesh_verts, num_bind_verts, numpoly;
+  /* Number of of vertices on the deformed mesh upon the bind process. */
+  unsigned int mesh_verts_num;
+  /* Number of vertices in the `verts` array of this modifier. */
+  unsigned int bind_verts_num;
+  /* Number of vertices and polygons on the target mesh upon bind process. */
+  unsigned int target_verts_num, target_polys_num;
   int flags;
   float mat[4][4];
   float strength;
   char defgrp_name[64];
-  void *_pad1;
+  int _pad2;
 } SurfaceDeformModifierData;
 
 /** Surface Deform modifier flags. */

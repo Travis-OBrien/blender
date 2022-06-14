@@ -315,6 +315,8 @@ static void TRANSFORM_OT_create_orientation(struct wmOperatorType *ot)
 #ifdef USE_LOOPSLIDE_HACK
 /**
  * Special hack for MESH_OT_loopcut_slide so we get back to the selection mode
+ * Do this for all meshes in multi-object editmode so their selectmode is in sync for following
+ * operators
  */
 static void transformops_loopsel_hack(bContext *C, wmOperator *op)
 {
@@ -334,12 +336,10 @@ static void transformops_loopsel_hack(bContext *C, wmOperator *op)
                            (mesh_select_mode[1] ? SCE_SELECT_EDGE : 0) |
                            (mesh_select_mode[2] ? SCE_SELECT_FACE : 0));
 
-        /* still switch if we were originally in face select mode */
+        /* Still switch if we were originally in face select mode. */
         if ((ts->selectmode != selectmode_orig) && (selectmode_orig != SCE_SELECT_FACE)) {
-          Object *obedit = CTX_data_edit_object(C);
-          BMEditMesh *em = BKE_editmesh_from_object(obedit);
-          em->selectmode = ts->selectmode = selectmode_orig;
-          EDBM_selectmode_set(em);
+          ts->selectmode = selectmode_orig;
+          EDBM_selectmode_set_multi(C, selectmode_orig);
         }
       }
     }
@@ -419,7 +419,7 @@ static int transform_modal(bContext *C, wmOperator *op, const wmEvent *event)
 
   /* XXX, workaround: active needs to be calculated before transforming,
    * since we're not reading from 'td->center' in this case. see: T40241 */
-  if (t->tsnap.target == SCE_SNAP_TARGET_ACTIVE) {
+  if (t->tsnap.source_select == SCE_SNAP_SOURCE_ACTIVE) {
     /* In camera view, tsnap callback is not set
      * (see #initSnappingMode() in transform_snap.c, and T40348). */
     if (t->tsnap.targetSnap && ((t->tsnap.status & TARGET_INIT) == 0)) {
@@ -628,7 +628,7 @@ void Transform_Properties(struct wmOperatorType *ot, int flags)
                         "Proportional Falloff",
                         "Falloff type for proportional editing mode");
     /* Abusing id_curve :/ */
-    RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_CURVE);
+    RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_CURVE_LEGACY);
     RNA_def_float(ot->srna,
                   "proportional_size",
                   1,
@@ -648,7 +648,11 @@ void Transform_Properties(struct wmOperatorType *ot, int flags)
     RNA_def_property_flag(prop, PROP_HIDDEN);
 
     if (flags & P_GEO_SNAP) {
-      prop = RNA_def_enum(ot->srna, "snap_target", rna_enum_snap_target_items, 0, "Target", "");
+      /* TODO(@gfxcoder): Rename `snap_target` to `snap_source` to avoid
+       * previous ambiguity of "target" (now, "source" is geometry to be moved and "target" is
+       * geometry to which moved geometry is snapped).  Use "Source snap point" and "Point on
+       * source that will snap to target" for name and description, respectively. */
+      prop = RNA_def_enum(ot->srna, "snap_target", rna_enum_snap_source_items, 0, "Target", "");
       RNA_def_property_flag(prop, PROP_HIDDEN);
       prop = RNA_def_float_vector(
           ot->srna, "snap_point", 3, NULL, -FLT_MAX, FLT_MAX, "Point", "", -FLT_MAX, FLT_MAX);
@@ -1255,7 +1259,7 @@ static void TRANSFORM_OT_seq_slide(struct wmOperatorType *ot)
 
   WM_operatortype_props_advanced_begin(ot);
 
-  Transform_Properties(ot, P_SNAP);
+  Transform_Properties(ot, P_SNAP | P_VIEW2D_EDGE_PAN);
 }
 
 static void TRANSFORM_OT_rotate_normal(struct wmOperatorType *ot)
@@ -1311,9 +1315,7 @@ static void TRANSFORM_OT_transform(struct wmOperatorType *ot)
                            P_ALIGN_SNAP | P_GPENCIL_EDIT | P_CENTER);
 }
 
-static int transform_from_gizmo_invoke(bContext *C,
-                                       wmOperator *UNUSED(op),
-                                       const wmEvent *UNUSED(event))
+static int transform_from_gizmo_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *event)
 {
   bToolRef *tref = WM_toolsystem_ref_from_context(C);
   if (tref) {
@@ -1343,7 +1345,7 @@ static int transform_from_gizmo_invoke(bContext *C,
         PointerRNA op_ptr;
         WM_operator_properties_create_ptr(&op_ptr, ot);
         RNA_boolean_set(&op_ptr, "release_confirm", true);
-        WM_operator_name_call_ptr(C, ot, WM_OP_INVOKE_DEFAULT, &op_ptr);
+        WM_operator_name_call_ptr(C, ot, WM_OP_INVOKE_DEFAULT, &op_ptr, event);
         WM_operator_properties_free(&op_ptr);
         return OPERATOR_FINISHED;
       }

@@ -529,8 +529,8 @@ static void contarget_get_mesh_mat(Object *ob, const char *substring, float mat[
   float vec[3] = {0.0f, 0.0f, 0.0f};
   float normal[3] = {0.0f, 0.0f, 0.0f};
   float weightsum = 0.0f;
-  const float(*vert_normals)[3] = BKE_mesh_vertex_normals_ensure(me_eval);
   if (me_eval) {
+    const float(*vert_normals)[3] = BKE_mesh_vertex_normals_ensure(me_eval);
     const MDeformVert *dvert = CustomData_get_layer(&me_eval->vdata, CD_MDEFORMVERT);
     int numVerts = me_eval->totvert;
 
@@ -888,7 +888,7 @@ static void default_get_tarmat_full_bbone(struct Depsgraph *UNUSED(depsgraph),
 /* This following macro should be used for all standard single-target *_get_tars functions
  * to save typing and reduce maintenance woes. It does not do the subtarget related operations
  * (Hopefully all compilers will be happy with the lines with just a space on them. Those are
- *  really just to help this code easier to read)
+ * really just to help this code easier to read)
  */
 /* TODO: cope with getting rotation order... */
 #define SINGLETARGETNS_GET_TARS(con, datatar, ct, list) \
@@ -932,7 +932,7 @@ static void default_get_tarmat_full_bbone(struct Depsgraph *UNUSED(depsgraph),
  * to save typing and reduce maintenance woes. It does not do the subtarget related operations.
  * NOTE: the pointer to ct will be changed to point to the next in the list (as it gets removed)
  * (Hopefully all compilers will be happy with the lines with just a space on them. Those are
- *  really just to help this code easier to read)
+ * really just to help this code easier to read)
  */
 #define SINGLETARGETNS_FLUSH_TARS(con, datatar, ct, list, no_copy) \
   { \
@@ -1493,9 +1493,9 @@ static void followpath_get_tarmat(struct Depsgraph *UNUSED(depsgraph),
 {
   bFollowPathConstraint *data = con->data;
 
-  if (VALID_CONS_TARGET(ct) && (ct->tar->type == OB_CURVE)) {
+  if (VALID_CONS_TARGET(ct) && (ct->tar->type == OB_CURVES_LEGACY)) {
     Curve *cu = ct->tar->data;
-    float vec[4], dir[3], radius;
+    float vec[4], radius;
     float curvetime;
 
     unit_m4(ct->matrix);
@@ -1532,7 +1532,7 @@ static void followpath_get_tarmat(struct Depsgraph *UNUSED(depsgraph),
       if (BKE_where_on_path(ct->tar,
                             curvetime,
                             vec,
-                            dir,
+                            NULL,
                             (data->followflag & FOLLOWPATH_FOLLOW) ? quat : NULL,
                             &radius,
                             NULL)) { /* quat_pt is quat or NULL. */
@@ -2479,7 +2479,7 @@ static void pycon_get_tarmat(struct Depsgraph *UNUSED(depsgraph),
 #endif
 
   if (VALID_CONS_TARGET(ct)) {
-    if (ct->tar->type == OB_CURVE && ct->tar->runtime.curve_cache == NULL) {
+    if (ct->tar->type == OB_CURVES_LEGACY && ct->tar->runtime.curve_cache == NULL) {
       unit_m4(ct->matrix);
       return;
     }
@@ -3867,7 +3867,7 @@ static void clampto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *tar
   bConstraintTarget *ct = targets->first;
 
   /* only evaluate if there is a target and it is a curve */
-  if (VALID_CONS_TARGET(ct) && (ct->tar->type == OB_CURVE)) {
+  if (VALID_CONS_TARGET(ct) && (ct->tar->type == OB_CURVES_LEGACY)) {
     float obmat[4][4], ownLoc[3];
     float curveMin[3], curveMax[3];
     float targetMatrix[4][4];
@@ -3886,7 +3886,7 @@ static void clampto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *tar
 
     /* get targetmatrix */
     if (data->tar->runtime.curve_cache && data->tar->runtime.curve_cache->anim_path_accum_length) {
-      float vec[4], dir[3], totmat[4][4];
+      float vec[4], totmat[4][4];
       float curvetime;
       short clamp_axis;
 
@@ -3969,7 +3969,7 @@ static void clampto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *tar
       }
 
       /* 3. position on curve */
-      if (BKE_where_on_path(ct->tar, curvetime, vec, dir, NULL, NULL, NULL)) {
+      if (BKE_where_on_path(ct->tar, curvetime, vec, NULL, NULL, NULL, NULL)) {
         unit_m4(totmat);
         copy_v3_v3(totmat[3], vec);
 
@@ -5412,12 +5412,12 @@ static void transformcache_evaluate(bConstraint *con, bConstraintOb *cob, ListBa
   }
 
   /* Do not process data if using a render time procedural. */
-  if (BKE_cache_file_uses_render_procedural(cache_file, scene, DEG_get_mode(cob->depsgraph))) {
+  if (BKE_cache_file_uses_render_procedural(cache_file, scene)) {
     return;
   }
 
   const float frame = DEG_get_ctime(cob->depsgraph);
-  const float time = BKE_cachefile_time_offset(cache_file, frame, FPS);
+  const double time = BKE_cachefile_time_offset(cache_file, (double)frame, FPS);
 
   if (!data->reader || !STREQ(data->reader_object_path, data->object_path)) {
     STRNCPY(data->reader_object_path, data->object_path);
@@ -5515,7 +5515,7 @@ static void constraints_init_typeinfo(void)
   constraintsTypeInfo[12] = &CTI_ACTION;               /* Action Constraint */
   constraintsTypeInfo[13] = &CTI_LOCKTRACK;            /* Locked-Track Constraint */
   constraintsTypeInfo[14] = &CTI_DISTLIMIT;            /* Limit Distance Constraint */
-  constraintsTypeInfo[15] = &CTI_STRETCHTO;            /* StretchTo Constaint */
+  constraintsTypeInfo[15] = &CTI_STRETCHTO;            /* StretchTo Constraint */
   constraintsTypeInfo[16] = &CTI_MINMAX;               /* Floor Constraint */
   /* constraintsTypeInfo[17] = &CTI_RIGIDBODYJOINT; */ /* RigidBody Constraint - Deprecated */
   constraintsTypeInfo[18] = &CTI_CLAMPTO;              /* ClampTo Constraint */
@@ -6190,6 +6190,40 @@ bool BKE_constraint_is_nonlocal_in_liboverride(const Object *ob, const bConstrai
 }
 
 /* -------- Target-Matrix Stuff ------- */
+
+int BKE_constraint_targets_get(struct bConstraint *con, struct ListBase *r_targets)
+{
+  BLI_listbase_clear(r_targets);
+
+  const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
+
+  if (!cti) {
+    return 0;
+  }
+
+  int count = 0;
+
+  /* Constraint-specific targets. */
+  if (cti->get_constraint_targets) {
+    count = cti->get_constraint_targets(con, r_targets);
+  }
+
+  return count;
+}
+
+void BKE_constraint_targets_flush(struct bConstraint *con, struct ListBase *targets, bool no_copy)
+{
+  const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
+
+  if (!cti) {
+    return;
+  }
+
+  /* Release the constraint-specific targets. */
+  if (cti->flush_constraint_targets) {
+    cti->flush_constraint_targets(con, targets, no_copy);
+  }
+}
 
 void BKE_constraint_target_matrix_get(struct Depsgraph *depsgraph,
                                       Scene *scene,

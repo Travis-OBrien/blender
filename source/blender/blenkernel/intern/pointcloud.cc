@@ -11,6 +11,7 @@
 #include "DNA_object_types.h"
 #include "DNA_pointcloud_types.h"
 
+#include "BLI_bounds.hh"
 #include "BLI_index_range.hh"
 #include "BLI_listbase.h"
 #include "BLI_math_vec_types.hh"
@@ -19,6 +20,7 @@
 #include "BLI_string.h"
 #include "BLI_task.hh"
 #include "BLI_utildefines.h"
+#include "BLI_vector.hh"
 
 #include "BKE_anim_data.h"
 #include "BKE_customdata.h"
@@ -43,6 +45,7 @@
 using blender::float3;
 using blender::IndexRange;
 using blender::Span;
+using blender::Vector;
 
 /* PointCloud datablock */
 
@@ -106,26 +109,24 @@ static void pointcloud_blend_write(BlendWriter *writer, ID *id, const void *id_a
 {
   PointCloud *pointcloud = (PointCloud *)id;
 
-  CustomDataLayer *players = nullptr, players_buff[CD_TEMP_CHUNK_SIZE];
-  CustomData_blend_write_prepare(
-      &pointcloud->pdata, &players, players_buff, ARRAY_SIZE(players_buff));
+  Vector<CustomDataLayer, 16> point_layers;
+  CustomData_blend_write_prepare(pointcloud->pdata, point_layers);
 
   /* Write LibData */
   BLO_write_id_struct(writer, PointCloud, id_address, &pointcloud->id);
   BKE_id_blend_write(writer, &pointcloud->id);
 
   /* Direct data */
-  CustomData_blend_write(
-      writer, &pointcloud->pdata, players, pointcloud->totpoint, CD_MASK_ALL, &pointcloud->id);
+  CustomData_blend_write(writer,
+                         &pointcloud->pdata,
+                         point_layers,
+                         pointcloud->totpoint,
+                         CD_MASK_ALL,
+                         &pointcloud->id);
 
   BLO_write_pointer_array(writer, pointcloud->totcol, pointcloud->mat);
   if (pointcloud->adt) {
     BKE_animdata_blend_write(writer, pointcloud->adt);
-  }
-
-  /* Remove temporary data. */
-  if (players && players != players_buff) {
-    MEM_freeN(players);
   }
 }
 
@@ -254,68 +255,28 @@ PointCloud *BKE_pointcloud_new_nomain(const int totpoint)
   return pointcloud;
 }
 
-struct MinMaxResult {
-  float3 min;
-  float3 max;
-};
-
-static MinMaxResult min_max_no_radii(Span<float3> positions)
+static std::optional<blender::bounds::MinMaxResult<float3>> point_cloud_bounds(
+    const PointCloud &pointcloud)
 {
-  using namespace blender::math;
-
-  return blender::threading::parallel_reduce(
-      positions.index_range(),
-      1024,
-      MinMaxResult{float3(FLT_MAX), float3(-FLT_MAX)},
-      [&](IndexRange range, const MinMaxResult &init) {
-        MinMaxResult result = init;
-        for (const int i : range) {
-          min_max(positions[i], result.min, result.max);
-        }
-        return result;
-      },
-      [](const MinMaxResult &a, const MinMaxResult &b) {
-        return MinMaxResult{min(a.min, b.min), max(a.max, b.max)};
-      });
-}
-
-static MinMaxResult min_max_with_radii(Span<float3> positions, Span<float> radii)
-{
-  using namespace blender::math;
-
-  return blender::threading::parallel_reduce(
-      positions.index_range(),
-      1024,
-      MinMaxResult{float3(FLT_MAX), float3(-FLT_MAX)},
-      [&](IndexRange range, const MinMaxResult &init) {
-        MinMaxResult result = init;
-        for (const int i : range) {
-          result.min = min(positions[i] - radii[i], result.min);
-          result.max = max(positions[i] + radii[i], result.max);
-        }
-        return result;
-      },
-      [](const MinMaxResult &a, const MinMaxResult &b) {
-        return MinMaxResult{min(a.min, b.min), max(a.max, b.max)};
-      });
+  Span<float3> positions{reinterpret_cast<float3 *>(pointcloud.co), pointcloud.totpoint};
+  if (pointcloud.radius) {
+    Span<float> radii{pointcloud.radius, pointcloud.totpoint};
+    return blender::bounds::min_max_with_radii(positions, radii);
+  }
+  return blender::bounds::min_max(positions);
 }
 
 bool BKE_pointcloud_minmax(const PointCloud *pointcloud, float r_min[3], float r_max[3])
 {
-  using namespace blender::math;
+  using namespace blender;
 
-  if (!pointcloud->totpoint) {
+  const std::optional<bounds::MinMaxResult<float3>> min_max = point_cloud_bounds(*pointcloud);
+  if (!min_max) {
     return false;
   }
 
-  Span<float3> positions{reinterpret_cast<float3 *>(pointcloud->co), pointcloud->totpoint};
-  const MinMaxResult min_max = (pointcloud->radius) ?
-                                   min_max_with_radii(positions,
-                                                      {pointcloud->radius, pointcloud->totpoint}) :
-                                   min_max_no_radii(positions);
-
-  copy_v3_v3(r_min, min(min_max.min, float3(r_min)));
-  copy_v3_v3(r_max, max(min_max.max, float3(r_max)));
+  copy_v3_v3(r_min, math::min(min_max->min, float3(r_min)));
+  copy_v3_v3(r_max, math::max(min_max->max, float3(r_max)));
 
   return true;
 }
@@ -354,9 +315,9 @@ void BKE_pointcloud_update_customdata_pointers(PointCloud *pointcloud)
       CustomData_get_layer_named(&pointcloud->pdata, CD_PROP_FLOAT, POINTCLOUD_ATTR_RADIUS));
 }
 
-bool BKE_pointcloud_customdata_required(PointCloud *UNUSED(pointcloud), CustomDataLayer *layer)
+bool BKE_pointcloud_customdata_required(const PointCloud *UNUSED(pointcloud), const char *name)
 {
-  return layer->type == CD_PROP_FLOAT3 && STREQ(layer->name, POINTCLOUD_ATTR_POSITION);
+  return STREQ(name, POINTCLOUD_ATTR_POSITION);
 }
 
 /* Dependency Graph */

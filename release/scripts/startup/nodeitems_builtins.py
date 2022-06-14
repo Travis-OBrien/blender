@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-
-# <pep8 compliant>
 import bpy
 import nodeitems_utils
 from nodeitems_utils import (
@@ -64,25 +62,14 @@ node_tree_group_type = {
     'GeometryNodeTree': 'GeometryNodeGroup',
 }
 
-# Custom Menu for Geometry Node Curves
+
+# Custom Menu for Geometry Node Curves.
 def curve_node_items(context):
     if context is None:
         return
     space = context.space_data
     if not space:
         return
-
-    if geometry_nodes_legacy_poll(context):
-        yield NodeItem("GeometryNodeLegacyCurveEndpoints")
-        yield NodeItem("GeometryNodeLegacyCurveReverse")
-        yield NodeItem("GeometryNodeLegacyCurveSubdivide")
-        yield NodeItem("GeometryNodeLegacyCurveToPoints")
-        yield NodeItem("GeometryNodeLegacyMeshToCurve")
-        yield NodeItem("GeometryNodeLegacyCurveSelectHandles")
-        yield NodeItem("GeometryNodeLegacyCurveSetHandles")
-        yield NodeItem("GeometryNodeLegacyCurveSplineType")
-        yield NodeItemCustom(draw=lambda self, layout, context: layout.separator())
-
     yield NodeItem("GeometryNodeCurveLength")
     yield NodeItem("GeometryNodeCurveToMesh")
     yield NodeItem("GeometryNodeCurveToPoints")
@@ -112,19 +99,14 @@ def curve_node_items(context):
     yield NodeItem("GeometryNodeSetSplineResolution")
     yield NodeItem("GeometryNodeCurveSplineType")
 
-# Custom Menu for Geometry Node Mesh
+
+# Custom Menu for Geometry Node Mesh.
 def mesh_node_items(context):
     if context is None:
         return
     space = context.space_data
     if not space:
         return
-
-    if geometry_nodes_legacy_poll(context):
-        yield NodeItem("GeometryNodeLegacyEdgeSplit", poll=geometry_nodes_legacy_poll)
-        yield NodeItem("GeometryNodeLegacySubdivisionSurface", poll=geometry_nodes_legacy_poll)
-        yield NodeItemCustom(draw=lambda self, layout, context: layout.separator())
-
     yield NodeItem("GeometryNodeDualMesh")
     yield NodeItem("GeometryNodeExtrudeMesh")
     yield NodeItem("GeometryNodeFlipFaces")
@@ -142,32 +124,29 @@ def mesh_node_items(context):
     yield NodeItem("GeometryNodeInputMeshEdgeVertices")
     yield NodeItem("GeometryNodeInputMeshFaceArea")
     yield NodeItem("GeometryNodeInputMeshFaceNeighbors")
+    yield NodeItem("GeometryNodeInputMeshFaceIsPlanar")
     yield NodeItem("GeometryNodeInputMeshIsland")
     yield NodeItem("GeometryNodeInputShadeSmooth")
     yield NodeItem("GeometryNodeInputMeshVertexNeighbors")
     yield NodeItemCustom(draw=lambda self, layout, context: layout.separator())
     yield NodeItem("GeometryNodeSetShadeSmooth")
 
-# Custom Menu for Geometry Nodes "Geometry" category
+
+# Custom Menu for Geometry Nodes "Geometry" category.
 def geometry_node_items(context):
     if context is None:
         return
     space = context.space_data
     if not space:
         return
-
-    if geometry_nodes_legacy_poll(context):
-        yield NodeItem("GeometryNodeLegacyDeleteGeometry", poll=geometry_nodes_legacy_poll)
-        yield NodeItem("GeometryNodeLegacyRaycast", poll=geometry_nodes_legacy_poll)
-        yield NodeItemCustom(draw=lambda self, layout, context: layout.separator())
-
     yield NodeItem("GeometryNodeBoundBox")
     yield NodeItem("GeometryNodeConvexHull")
     yield NodeItem("GeometryNodeDeleteGeometry")
-    yield NodeItem("GeometryNodeGeometryToInstance")
-    yield NodeItem("GeometryNodeMergeByDistance")
+    yield NodeItem("GeometryNodeDuplicateElements")
     yield NodeItem("GeometryNodeProximity")
+    yield NodeItem("GeometryNodeGeometryToInstance")
     yield NodeItem("GeometryNodeJoinGeometry")
+    yield NodeItem("GeometryNodeMergeByDistance")
     yield NodeItem("GeometryNodeRaycast")
     yield NodeItem("GeometryNodeSeparateComponents")
     yield NodeItem("GeometryNodeSeparateGeometry")
@@ -176,18 +155,14 @@ def geometry_node_items(context):
     yield NodeItem("GeometryNodeSetID")
     yield NodeItem("GeometryNodeSetPosition")
 
-# Custom Menu for Geometry Node Input Nodes
+
+# Custom Menu for Geometry Node Input Nodes.
 def geometry_input_node_items(context):
     if context is None:
         return
     space = context.space_data
     if not space:
         return
-
-    if geometry_nodes_legacy_poll(context):
-        yield NodeItem("FunctionNodeLegacyRandomFloat")
-        yield NodeItemCustom(draw=lambda self, layout, context: layout.separator())
-
     yield NodeItem("FunctionNodeInputBool")
     yield NodeItem("GeometryNodeCollectionInfo")
     yield NodeItem("FunctionNodeInputColor")
@@ -201,24 +176,38 @@ def geometry_input_node_items(context):
     yield NodeItemCustom(draw=lambda self, layout, context: layout.separator())
     yield NodeItem("GeometryNodeInputID")
     yield NodeItem("GeometryNodeInputIndex")
+    yield NodeItem("GeometryNodeInputNamedAttribute")
     yield NodeItem("GeometryNodeInputNormal")
     yield NodeItem("GeometryNodeInputPosition")
     yield NodeItem("GeometryNodeInputRadius")
     yield NodeItem("GeometryNodeInputSceneTime")
 
-# Custom Menu for Material Nodes
+
+# Custom Menu for Geometry Node Instance Nodes.
+def geometry_instance_node_items(context):
+    if context is None:
+        return
+    space = context.space_data
+    if not space:
+        return
+    yield NodeItem("GeometryNodeInstanceOnPoints")
+    yield NodeItem("GeometryNodeInstancesToPoints")
+    yield NodeItem("GeometryNodeRealizeInstances")
+    yield NodeItem("GeometryNodeRotateInstances")
+    yield NodeItem("GeometryNodeScaleInstances")
+    yield NodeItem("GeometryNodeTranslateInstances")
+    yield NodeItemCustom(draw=lambda self, layout, context: layout.separator())
+    yield NodeItem("GeometryNodeInputInstanceRotation")
+    yield NodeItem("GeometryNodeInputInstanceScale")
+
+
+# Custom Menu for Material Nodes.
 def geometry_material_node_items(context):
     if context is None:
         return
     space = context.space_data
     if not space:
         return
-
-    if geometry_nodes_legacy_poll(context):
-        yield NodeItem("GeometryNodeLegacyMaterialAssign")
-        yield NodeItem("GeometryNodeLegacySelectByMaterial")
-        yield NodeItemCustom(draw=lambda self, layout, context: layout.separator())
-
     yield NodeItem("GeometryNodeReplaceMaterial")
     yield NodeItemCustom(draw=lambda self, layout, context: layout.separator())
     yield NodeItem("GeometryNodeInputMaterialIndex")
@@ -227,24 +216,14 @@ def geometry_material_node_items(context):
     yield NodeItem("GeometryNodeSetMaterial")
     yield NodeItem("GeometryNodeSetMaterialIndex")
 
-# Custom Menu for Geometry Node Points
+
+# Custom Menu for Geometry Node Points.
 def point_node_items(context):
     if context is None:
         return
     space = context.space_data
     if not space:
         return
-
-    if geometry_nodes_legacy_poll(context):
-        yield NodeItem("GeometryNodeLegacyAlignRotationToVector", poll=geometry_nodes_legacy_poll)
-        yield NodeItem("GeometryNodeLegacyPointDistribute", poll=geometry_nodes_legacy_poll)
-        yield NodeItem("GeometryNodeLegacyPointInstance", poll=geometry_nodes_legacy_poll)
-        yield NodeItem("GeometryNodeLegacyPointScale", poll=geometry_nodes_legacy_poll)
-        yield NodeItem("GeometryNodeLegacyPointSeparate", poll=geometry_nodes_legacy_poll)
-        yield NodeItem("GeometryNodeLegacyPointTranslate", poll=geometry_nodes_legacy_poll)
-        yield NodeItem("GeometryNodeLegacyRotatePoints", poll=geometry_nodes_legacy_poll)
-        yield NodeItemCustom(draw=lambda self, layout, context: layout.separator())
-
     yield NodeItem("GeometryNodeDistributePointsOnFaces")
     yield NodeItem("GeometryNodePointsToVertices")
     yield NodeItem("GeometryNodePointsToVolume")
@@ -252,7 +231,8 @@ def point_node_items(context):
     yield NodeItemCustom(draw=lambda self, layout, context: layout.separator())
     yield NodeItem("GeometryNodeSetPointRadius")
 
-# generic node group items generator for shader, compositor, geometry and texture node groups
+
+# Generic node group items generator for shader, compositor, geometry and texture node groups.
 def node_group_items(context):
     if context is None:
         return
@@ -350,10 +330,6 @@ def object_eevee_shader_nodes_poll(context):
 def object_eevee_cycles_shader_nodes_poll(context):
     return (object_shader_nodes_poll(context) and
             eevee_cycles_shader_nodes_poll(context))
-
-
-def geometry_nodes_legacy_poll(context):
-    return context.preferences.experimental.use_geometry_nodes_legacy
 
 
 # All standard node categories currently used in nodes.
@@ -459,12 +435,10 @@ shader_node_categories = [
         NodeItem("ShaderNodeRGBToBW"),
         NodeItem("ShaderNodeShaderToRGB", poll=object_eevee_shader_nodes_poll),
         NodeItem("ShaderNodeVectorMath"),
-        NodeItem("ShaderNodeSeparateRGB"),
-        NodeItem("ShaderNodeCombineRGB"),
+        NodeItem("ShaderNodeSeparateColor"),
+        NodeItem("ShaderNodeCombineColor"),
         NodeItem("ShaderNodeSeparateXYZ"),
         NodeItem("ShaderNodeCombineXYZ"),
-        NodeItem("ShaderNodeSeparateHSV"),
-        NodeItem("ShaderNodeCombineHSV"),
         NodeItem("ShaderNodeWavelength"),
         NodeItem("ShaderNodeBlackbody"),
     ]),
@@ -523,14 +497,8 @@ compositor_node_categories = [
         NodeItem("CompositorNodePremulKey"),
         NodeItem("CompositorNodeIDMask"),
         NodeItem("CompositorNodeRGBToBW"),
-        NodeItem("CompositorNodeSepRGBA"),
-        NodeItem("CompositorNodeCombRGBA"),
-        NodeItem("CompositorNodeSepHSVA"),
-        NodeItem("CompositorNodeCombHSVA"),
-        NodeItem("CompositorNodeSepYUVA"),
-        NodeItem("CompositorNodeCombYUVA"),
-        NodeItem("CompositorNodeSepYCCA"),
-        NodeItem("CompositorNodeCombYCCA"),
+        NodeItem("CompositorNodeSeparateColor"),
+        NodeItem("CompositorNodeCombineColor"),
         NodeItem("CompositorNodeSeparateXYZ"),
         NodeItem("CompositorNodeCombineXYZ"),
         NodeItem("CompositorNodeSwitchView"),
@@ -616,8 +584,8 @@ texture_node_categories = [
         NodeItem("TextureNodeCurveRGB"),
         NodeItem("TextureNodeInvert"),
         NodeItem("TextureNodeHueSaturation"),
-        NodeItem("TextureNodeCompose"),
-        NodeItem("TextureNodeDecompose"),
+        NodeItem("TextureNodeCombineColor"),
+        NodeItem("TextureNodeSeparateColor"),
     ]),
     TextureNodeCategory("TEX_PATTERN", "Pattern", items=[
         NodeItem("TextureNodeChecker"),
@@ -658,36 +626,19 @@ texture_node_categories = [
 geometry_node_categories = [
     # Geometry Nodes
     GeometryNodeCategory("GEO_ATTRIBUTE", "Attribute", items=[
-        NodeItem("GeometryNodeLegacyAttributeRandomize", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeMath", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeClamp", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeCompare", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeConvert", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeCurveMap", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeFill", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeMix", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeProximity", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeColorRamp", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeVectorMath", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeVectorRotate", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeSampleTexture", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeCombineXYZ", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeSeparateXYZ", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeMapRange", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyAttributeTransfer", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeAttributeRemove", poll=geometry_nodes_legacy_poll),
-
         NodeItem("GeometryNodeCaptureAttribute"),
         NodeItem("GeometryNodeAttributeDomainSize"),
         NodeItem("GeometryNodeAttributeStatistic"),
         NodeItem("GeometryNodeAttributeTransfer"),
+        NodeItem("GeometryNodeRemoveAttribute"),
+        NodeItem("GeometryNodeStoreNamedAttribute"),
     ]),
     GeometryNodeCategory("GEO_COLOR", "Color", items=[
         NodeItem("ShaderNodeMixRGB"),
         NodeItem("ShaderNodeRGBCurve"),
         NodeItem("ShaderNodeValToRGB"),
-        NodeItem("ShaderNodeSeparateRGB"),
-        NodeItem("ShaderNodeCombineRGB"),
+        NodeItem("FunctionNodeSeparateColor"),
+        NodeItem("FunctionNodeCombineColor"),
     ]),
     GeometryNodeCategory("GEO_CURVE", "Curve", items=curve_node_items),
     GeometryNodeCategory("GEO_PRIMITIVES_CURVE", "Curve Primitives", items=[
@@ -702,14 +653,7 @@ geometry_node_categories = [
     ]),
     GeometryNodeCategory("GEO_GEOMETRY", "Geometry", items=geometry_node_items),
     GeometryNodeCategory("GEO_INPUT", "Input", items=geometry_input_node_items),
-    GeometryNodeCategory("GEO_INSTANCE", "Instances", items=[
-        NodeItem("GeometryNodeInstanceOnPoints"),
-        NodeItem("GeometryNodeInstancesToPoints"),
-        NodeItem("GeometryNodeRealizeInstances"),
-        NodeItem("GeometryNodeRotateInstances"),
-        NodeItem("GeometryNodeScaleInstances"),
-        NodeItem("GeometryNodeTranslateInstances"),
-    ]),
+    GeometryNodeCategory("GEO_INSTANCE", "Instances", items=geometry_instance_node_items),
     GeometryNodeCategory("GEO_MATERIAL", "Material", items=geometry_material_node_items),
     GeometryNodeCategory("GEO_MESH", "Mesh", items=mesh_node_items),
     GeometryNodeCategory("GEO_PRIMITIVES_MESH", "Mesh Primitives", items=[
@@ -770,9 +714,6 @@ geometry_node_categories = [
         NodeItem("ShaderNodeVectorRotate"),
     ]),
     GeometryNodeCategory("GEO_VOLUME", "Volume", items=[
-        NodeItem("GeometryNodeLegacyPointsToVolume", poll=geometry_nodes_legacy_poll),
-        NodeItem("GeometryNodeLegacyVolumeToMesh", poll=geometry_nodes_legacy_poll),
-
         NodeItem("GeometryNodeVolumeToMesh"),
     ]),
     GeometryNodeCategory("GEO_GROUP", "Group", items=node_group_items),

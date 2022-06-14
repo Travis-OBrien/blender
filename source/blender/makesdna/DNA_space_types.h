@@ -173,7 +173,7 @@ typedef struct SpaceProperties {
 
 /* button defines (deprecated) */
 #ifdef DNA_DEPRECATED_ALLOW
-/* warning: the values of these defines are used in SpaceProperties.tabs[8] */
+/* WARNING: the values of these defines are used in SpaceProperties.tabs[8] */
 /* SpaceProperties.mainb new */
 #  define CONTEXT_SCENE 0
 #  define CONTEXT_OBJECT 1
@@ -280,8 +280,12 @@ typedef struct SpaceOutliner {
   char search_string[64];
   struct TreeStoreElem search_tse;
 
-  short flag, outlinevis, storeflag;
+  short flag;
+  short outlinevis;
+  short lib_override_view_mode;
+  short storeflag;
   char search_flags;
+  char _pad[6];
 
   /** Selection syncing flag (#WM_OUTLINER_SYNC_SELECT_FROM_OBJECT and similar flags). */
   char sync_select_dirty;
@@ -309,7 +313,6 @@ typedef enum eSpaceOutliner_Flag {
 typedef enum eSpaceOutliner_Filter {
   SO_FILTER_SEARCH = (1 << 0), /* Run-time flag. */
   SO_FILTER_CLEARED_1 = (1 << 1),
-  SO_FILTER_NO_LIB_OVERRIDE = SO_FILTER_CLEARED_1, /* re-use */
   SO_FILTER_NO_OBJECT = (1 << 2),
   SO_FILTER_NO_OB_CONTENT = (1 << 3), /* Not only mesh, but modifiers, constraints, ... */
   SO_FILTER_NO_CHILDREN = (1 << 4),
@@ -345,7 +348,7 @@ typedef enum eSpaceOutliner_Filter {
 
 #define SO_FILTER_ANY \
   (SO_FILTER_NO_OB_CONTENT | SO_FILTER_NO_CHILDREN | SO_FILTER_OB_TYPE | SO_FILTER_OB_STATE | \
-   SO_FILTER_NO_COLLECTION | SO_FILTER_NO_VIEW_LAYERS | SO_FILTER_NO_LIB_OVERRIDE)
+   SO_FILTER_NO_COLLECTION | SO_FILTER_NO_VIEW_LAYERS)
 
 /** #SpaceOutliner.filter_state */
 typedef enum eSpaceOutliner_StateFilter {
@@ -388,6 +391,14 @@ typedef enum eSpaceOutliner_Mode {
   SO_VIEW_LAYER = 15,
   SO_OVERRIDES_LIBRARY = 16,
 } eSpaceOutliner_Mode;
+
+/** #SpaceOutliner.outlinevis */
+typedef enum eSpaceOutliner_LibOverrideViewMode {
+  /** View all overrides with RNA buttons to edit the overridden values. */
+  SO_LIB_OVERRIDE_VIEW_PROPERTIES = 0,
+  /** View entire override hierarchies (relationships between overridden data-blocks). */
+  SO_LIB_OVERRIDE_VIEW_HIERARCHIES = 1,
+} eSpaceOutliner_LibOverrideViewMode;
 
 /** #SpaceOutliner.storeflag */
 typedef enum eSpaceOutliner_StoreFlag {
@@ -506,7 +517,7 @@ typedef enum eGraphEdit_Mode {
 typedef enum eGraphEdit_Runtime_Flag {
   /** Temporary flag to force channel selections to be synced with main. */
   SIPO_RUNTIME_FLAG_NEED_CHAN_SYNC = (1 << 0),
-  /** Temporary flag to force fcurves to recalculate colors. */
+  /** Temporary flag to force F-Curves to recalculate colors. */
   SIPO_RUNTIME_FLAG_NEED_CHAN_SYNC_COLOR = (1 << 1),
 
   /**
@@ -606,6 +617,8 @@ typedef struct SpaceSeqRuntime {
   struct rctf last_thumbnail_area;
   /** Stores lists of most recently displayed thumbnails. */
   struct GHash *last_displayed_thumbnails;
+  int rename_channel_index;
+  float timeline_clamp_custom_range;
 } SpaceSeqRuntime;
 
 /** Sequencer. */
@@ -678,7 +691,7 @@ typedef enum eSpaceSeq_Flag {
   SEQ_DRAWFRAMES = (1 << 0),
   SEQ_MARKER_TRANS = (1 << 1),
   SEQ_DRAW_COLOR_SEPARATED = (1 << 2),
-  SPACE_SEQ_FLAG_UNUSED_3 = (1 << 3),
+  SEQ_CLAMP_VIEW = (1 << 3),
   SPACE_SEQ_FLAG_UNUSED_4 = (1 << 4),
   SPACE_SEQ_FLAG_UNUSED_5 = (1 << 5),
   SEQ_USE_ALPHA = (1 << 6), /* use RGBA display mode for preview */
@@ -782,7 +795,7 @@ typedef struct FileSelectParams {
   char _pad1[2];
 
   /* short */
-  /** XXXXX for now store type here, should be moved to the operator. */
+  /** XXX: for now store type here, should be moved to the operator. */
   short type; /* eFileSelectType */
   /** Settings for filter, hiding dots files. */
   short flag;
@@ -797,7 +810,7 @@ typedef struct FileSelectParams {
   /** Filter when (flags & FILE_FILTER) is true. */
   int filter;
 
-  /** Max number of levels in dirtree to show at once, 0 to disable recursion. */
+  /** Max number of levels in directory tree to show at once, 0 to disable recursion. */
   short recursion_level;
 
   char _pad4[2];
@@ -894,10 +907,9 @@ typedef struct SpaceFile {
    */
   ListBase folder_histories; /* FileFolderHistory */
 
-  /* operator that is invoking fileselect
-   * op->exec() will be called on the 'Load' button.
-   * if operator provides op->cancel(), then this will be invoked
-   * on the cancel button.
+  /**
+   * The operator that is invoking file-select `op->exec()` will be called on the 'Load' button.
+   * if operator provides op->cancel(), then this will be invoked on the cancel button.
    */
   struct wmOperator *op;
 
@@ -990,12 +1002,6 @@ typedef enum eFileSelectType {
   FILE_BLENDER = 8, /* don't display relative paths */
   FILE_SPECIAL = 9,
 } eFileSelectType;
-
-/** File-selector op property -> action. */
-typedef enum eFileSel_Action {
-  FILE_OPENFILE = 0,
-  FILE_SAVE = 1,
-} eFileSel_Action;
 
 /**
  * #FileSelectParams.flag / `sfile->params->flag`.
@@ -1142,8 +1148,8 @@ typedef struct FileDirEntry {
 #
 typedef struct FileDirEntryArr {
   ListBase entries;
-  int nbr_entries;
-  int nbr_entries_filtered;
+  int entries_num;
+  int entries_filtered_num;
 
   /** FILE_MAX. */
   char root[1024];
@@ -1214,10 +1220,10 @@ typedef struct SpaceImage {
   /** UV draw type. */
   char dt_uv;
   /** Sticky selection type. */
-  char sticky;
   char dt_uvstretch;
   char around;
 
+  char gizmo_flag;
   char _pad1[3];
 
   int flag;
@@ -1264,15 +1270,6 @@ typedef enum eSpaceImage_Mode {
   SI_MODE_MASK = 2,
   SI_MODE_UV = 3,
 } eSpaceImage_Mode;
-
-/* SpaceImage.sticky
- * Note DISABLE should be 0, however would also need to re-arrange icon order,
- * also, sticky loc is the default mode so this means we don't need to 'do_versions' */
-typedef enum eSpaceImage_Sticky {
-  SI_STICKY_LOC = 0,
-  SI_STICKY_DISABLE = 1,
-  SI_STICKY_VERTEX = 2,
-} eSpaceImage_Sticky;
 
 /** #SpaceImage.flag */
 typedef enum eSpaceImage_Flag {
@@ -1322,7 +1319,15 @@ typedef enum eSpaceImage_Flag {
 
 typedef enum eSpaceImageOverlay_Flag {
   SI_OVERLAY_SHOW_OVERLAYS = (1 << 0),
+  SI_OVERLAY_SHOW_GRID_BACKGROUND = (1 << 1),
 } eSpaceImageOverlay_Flag;
+
+/** #SpaceImage.gizmo_flag */
+enum {
+  /** All gizmos. */
+  SI_GIZMO_HIDE = (1 << 0),
+  SI_GIZMO_HIDE_NAVIGATE = (1 << 1),
+};
 
 /** Keep in sync with `STEPS_LEN` in `grid_frag.glsl`. */
 #define SI_GRID_STEPS_LEN 8
@@ -1335,7 +1340,7 @@ typedef enum eSpaceImageOverlay_Flag {
 
 typedef struct SpaceText_Runtime {
 
-  /** Actual line height, scaled by dpi. */
+  /** Actual line height, scaled by DPI. */
   int lheight_px;
 
   /** Runtime computed, character width. */
@@ -1516,6 +1521,7 @@ typedef enum eSpaceNodeOverlay_Flag {
   SN_OVERLAY_SHOW_WIRE_COLORS = (1 << 2),
   SN_OVERLAY_SHOW_TIMINGS = (1 << 3),
   SN_OVERLAY_SHOW_PATH = (1 << 4),
+  SN_OVERLAY_SHOW_NAMED_ATTRIBUTES = (1 << 5),
 } eSpaceNodeOverlay_Flag;
 
 typedef struct SpaceNode {
@@ -1930,7 +1936,7 @@ typedef struct SpaceSpreadsheet {
 
   /* #GeometryComponentType. */
   uint8_t geometry_component_type;
-  /* #AttributeDomain. */
+  /* #eAttrDomain. */
   uint8_t attribute_domain;
   /* eSpaceSpreadsheet_ObjectContext. */
   uint8_t object_eval_state;
@@ -1970,8 +1976,7 @@ typedef struct SpreadsheetRowFilter {
   float value_float2[2];
   float value_float3[3];
   float value_color[4];
-
-  char _pad1[4];
+  uint8_t value_byte_color[4];
 } SpreadsheetRowFilter;
 
 typedef enum eSpaceSpreadsheet_RowFilterFlag {
@@ -2008,6 +2013,8 @@ typedef enum eSpreadsheetColumnValueType {
   SPREADSHEET_VALUE_TYPE_COLOR = 5,
   SPREADSHEET_VALUE_TYPE_INSTANCES = 6,
   SPREADSHEET_VALUE_TYPE_STRING = 7,
+  SPREADSHEET_VALUE_TYPE_BYTE_COLOR = 8,
+  SPREADSHEET_VALUE_TYPE_INT8 = 9,
 } eSpreadsheetColumnValueType;
 
 /**
@@ -2060,7 +2067,7 @@ typedef enum eSpace_Type {
   SPACE_STATUSBAR = 22,
   SPACE_SPREADSHEET = 23
 
-#define SPACE_TYPE_LAST SPACE_SPREADSHEET
+#define SPACE_TYPE_NUM (SPACE_SPREADSHEET + 1)
 } eSpace_Type;
 
 /* use for function args */

@@ -149,7 +149,7 @@ static bool id_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent *UNUSE
   return WM_drag_get_local_ID(drag, 0) != NULL;
 }
 
-static void id_drop_copy(wmDrag *drag, wmDropBox *drop)
+static void id_drop_copy(bContext *UNUSED(C), wmDrag *drag, wmDropBox *drop)
 {
   ID *id = WM_drag_get_local_ID(drag, 0);
 
@@ -164,7 +164,7 @@ static bool path_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent *UNU
   return (drag->type == WM_DRAG_PATH);
 }
 
-static void path_drop_copy(wmDrag *drag, wmDropBox *drop)
+static void path_drop_copy(bContext *UNUSED(C), wmDrag *drag, wmDropBox *drop)
 {
   char pathname[FILE_MAX + 2];
   BLI_snprintf(pathname, sizeof(pathname), "\"%s\"", drag->path);
@@ -189,7 +189,7 @@ static void console_main_region_draw(const bContext *C, ARegion *region)
   View2D *v2d = &region->v2d;
 
   if (BLI_listbase_is_empty(&sc->scrollback)) {
-    WM_operator_name_call((bContext *)C, "CONSOLE_OT_banner", WM_OP_EXEC_DEFAULT, NULL);
+    WM_operator_name_call((bContext *)C, "CONSOLE_OT_banner", WM_OP_EXEC_DEFAULT, NULL, NULL);
   }
 
   /* clear and setup matrix */

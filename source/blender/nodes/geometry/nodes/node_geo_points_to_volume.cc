@@ -168,14 +168,14 @@ static void gather_point_data_from_component(GeoNodeExecParams &params,
 
   Field<float> radius_field = params.get_input<Field<float>>("Radius");
   GeometryComponentFieldContext field_context{component, ATTR_DOMAIN_POINT};
-  const int domain_size = component.attribute_domain_size(ATTR_DOMAIN_POINT);
+  const int domain_num = component.attribute_domain_num(ATTR_DOMAIN_POINT);
 
-  r_positions.resize(r_positions.size() + domain_size);
-  positions.materialize(r_positions.as_mutable_span().take_back(domain_size));
+  r_positions.resize(r_positions.size() + domain_num);
+  positions.materialize(r_positions.as_mutable_span().take_back(domain_num));
 
-  r_radii.resize(r_radii.size() + domain_size);
-  fn::FieldEvaluator evaluator{field_context, domain_size};
-  evaluator.add_with_destination(radius_field, r_radii.as_mutable_span().take_back(domain_size));
+  r_radii.resize(r_radii.size() + domain_num);
+  fn::FieldEvaluator evaluator{field_context, domain_num};
+  evaluator.add_with_destination(radius_field, r_radii.as_mutable_span().take_back(domain_num));
   evaluator.evaluate();
 }
 
@@ -198,17 +198,12 @@ static void initialize_volume_component_from_points(GeoNodeExecParams &params,
   Vector<float3> positions;
   Vector<float> radii;
 
-  if (r_geometry_set.has<MeshComponent>()) {
-    gather_point_data_from_component(
-        params, *r_geometry_set.get_component_for_read<MeshComponent>(), positions, radii);
-  }
-  if (r_geometry_set.has<PointCloudComponent>()) {
-    gather_point_data_from_component(
-        params, *r_geometry_set.get_component_for_read<PointCloudComponent>(), positions, radii);
-  }
-  if (r_geometry_set.has<CurveComponent>()) {
-    gather_point_data_from_component(
-        params, *r_geometry_set.get_component_for_read<CurveComponent>(), positions, radii);
+  for (const GeometryComponentType type :
+       {GEO_COMPONENT_TYPE_MESH, GEO_COMPONENT_TYPE_POINT_CLOUD, GEO_COMPONENT_TYPE_CURVE}) {
+    if (r_geometry_set.has(type)) {
+      gather_point_data_from_component(
+          params, *r_geometry_set.get_component_for_read(type), positions, radii);
+    }
   }
 
   const float max_radius = *std::max_element(radii.begin(), radii.end());

@@ -15,6 +15,8 @@ set(INC
   ../windowmanager
   ../../../intern/atomic
   ../../../intern/guardedalloc
+  # RNA_prototypes.h
+  ${CMAKE_BINARY_DIR}/source/blender/makesrna
 )
 
 set(INC_SYS
@@ -38,6 +40,7 @@ set(SRC
   intern/builder/deg_builder_relations_view_layer.cc
   intern/builder/deg_builder_remove_noop.cc
   intern/builder/deg_builder_rna.cc
+  intern/builder/deg_builder_stack.cc
   intern/builder/deg_builder_transitive.cc
   intern/builder/pipeline.cc
   intern/builder/pipeline_all_objects.cc
@@ -101,6 +104,7 @@ set(SRC
   intern/builder/deg_builder_relations_impl.h
   intern/builder/deg_builder_remove_noop.h
   intern/builder/deg_builder_rna.h
+  intern/builder/deg_builder_stack.h
   intern/builder/deg_builder_transitive.h
   intern/builder/pipeline.h
   intern/builder/pipeline_all_objects.h
@@ -154,6 +158,9 @@ if(WITH_PYTHON)
 endif()
 
 blender_add_lib(bf_depsgraph "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
+
+# RNA_prototypes.h
+add_dependencies(bf_depsgraph bf_rna)
 
 if(WITH_GTESTS)
   set(TEST_SRC

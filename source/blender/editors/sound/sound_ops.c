@@ -34,6 +34,7 @@
 #include "RNA_access.h"
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
+#include "RNA_prototypes.h"
 
 #include "SEQ_iterator.h"
 #include "SEQ_utils.h"
@@ -760,7 +761,8 @@ static int sound_pack_exec(bContext *C, wmOperator *op)
 
   sound->packedfile = BKE_packedfile_new(
       op->reports, sound->filepath, ID_BLEND_PATH(bmain, &sound->id));
-  BKE_sound_load(bmain, sound);
+
+  DEG_id_tag_update_ex(bmain, &sound->id, ID_RECALC_AUDIO);
 
   return OPERATOR_FINISHED;
 }

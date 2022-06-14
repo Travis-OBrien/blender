@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-
-# <pep8 compliant>
 from __future__ import annotations
 
 import bpy
@@ -21,10 +19,68 @@ from bpy.props import (
 )
 from bpy.app.translations import pgettext_iface as iface_
 
+
+def _rna_path_prop_search_for_context_impl(context, edit_text, unique_attrs):
+    # Use the same logic as auto-completing in the Python console to expand the data-path.
+    from bl_console_utils.autocomplete import intellisense
+    context_prefix = "context."
+    line = context_prefix + edit_text
+    cursor = len(line)
+    namespace = {"context": context}
+    comp_prefix, _, comp_options = intellisense.expand(line=line, cursor=len(line), namespace=namespace, private=False)
+    prefix = comp_prefix[len(context_prefix):]  # Strip "context."
+    for attr in comp_options.split("\n"):
+        if attr.endswith((
+                # Exclude function calls because they are generally not part of data-paths.
+                "(", ")",
+                # RNA properties for introspection, not useful to expand.
+                ".bl_rna", ".rna_type",
+        )):
+            continue
+        attr_full = prefix + attr.lstrip()
+        if attr_full in unique_attrs:
+            continue
+        unique_attrs.add(attr_full)
+        yield attr_full
+
+
+def rna_path_prop_search_for_context(self, context, edit_text):
+    # NOTE(@campbellbarton): Limiting data-path expansion is rather arbitrary.
+    # It's possible for e.g. that someone would want to set a shortcut in the preferences or
+    # in other region types than those currently expanded. Unless there is a reasonable likelihood
+    # users might expand these space-type/region-type combinations - exclude them from this search.
+    # After all, this list is mainly intended as a hint, users are not prevented from constructing
+    # the data-paths themselves.
+    unique_attrs = set()
+
+    for window in context.window_manager.windows:
+        for area in window.screen.areas:
+            # Users are very unlikely to be setting shortcuts in the preferences, skip this.
+            if area.type == 'PREFERENCES':
+                continue
+            space = area.spaces.active
+            # Ignore the same region type multiple times in an area.
+            # Prevents the 3D-viewport quad-view from attempting to expand 3 extra times for e.g.
+            region_type_unique = set()
+            for region in area.regions:
+                if region.type not in {'WINDOW', 'PREVIEW'}:
+                    continue
+                if region.type in region_type_unique:
+                    continue
+                region_type_unique.add(region.type)
+                with context.temp_override(window=window, area=area, region=region):
+                    yield from _rna_path_prop_search_for_context_impl(context, edit_text, unique_attrs)
+
+    if not unique_attrs:
+        # Users *might* only have a preferences area shown, in that case just expand the current context.
+        yield from _rna_path_prop_search_for_context_impl(context, edit_text, unique_attrs)
+
+
 rna_path_prop = StringProperty(
     name="Context Attributes",
-    description="RNA context string",
+    description="Context data-path (expanded using visible windows in the current .blend file)",
     maxlen=1024,
+    search=rna_path_prop_search_for_context,
 )
 
 rna_reverse_prop = BoolProperty(
@@ -963,21 +1019,19 @@ class WM_OT_url_open(Operator):
         return {'FINISHED'}
 
 
-# NOTE: needed for Python 3.10 since there are name-space issues with annotations.
-# This can be moved into the class as a static-method once Python 3.9x is dropped.
-def _wm_url_open_preset_type_items(_self, _context):
-    return [item for (item, _) in WM_OT_url_open_preset.preset_items]
-
-
 class WM_OT_url_open_preset(Operator):
     """Open a preset website in the web browser"""
     bl_idname = "wm.url_open_preset"
     bl_label = "Open Preset Website"
     bl_options = {'INTERNAL'}
 
+    @staticmethod
+    def _wm_url_open_preset_type_items(_self, _context):
+        return [item for (item, _) in WM_OT_url_open_preset.preset_items]
+
     type: EnumProperty(
         name="Site",
-        items=_wm_url_open_preset_type_items,
+        items=WM_OT_url_open_preset._wm_url_open_preset_type_items,
     )
 
     id: StringProperty(
@@ -997,11 +1051,10 @@ class WM_OT_url_open_preset(Operator):
         return "https://www.blender.org/download/releases/%d-%d/" % bpy.app.version[:2]
 
     def _url_from_manual(self, _context):
-        if bpy.app.version_cycle in {"rc", "release"}:
-            manual_version = "%d.%d" % bpy.app.version[:2]
-        else:
-            manual_version = "dev"
-        return "https://docs.blender.org/manual/en/" + manual_version + "/"
+        return "https://docs.blender.org/manual/en/%d.%d/" % bpy.app.version[:2]
+
+    def _url_from_api(self, _context):
+        return "https://docs.blender.org/api/%d.%d/" % bpy.app.version[:2]
 
     # This list is: (enum_item, url) pairs.
     # Allow dynamically extending.
@@ -1016,9 +1069,12 @@ class WM_OT_url_open_preset(Operator):
         (('RELEASE_NOTES', "Release Notes",
           "Read about what's new in this version of Blender"),
          _url_from_release_notes),
-        (('MANUAL', "Manual",
+        (('MANUAL', "User Manual",
           "The reference manual for this version of Blender"),
          _url_from_manual),
+        (('API', "Python API Reference",
+          "The API reference manual for this version of Blender"),
+         _url_from_api),
 
         # Static URL's.
         (('FUND', "Development Fund",
@@ -1233,11 +1289,7 @@ class WM_OT_doc_view(Operator):
     bl_label = "View Documentation"
 
     doc_id: doc_id
-    if bpy.app.version_cycle in {"release", "rc", "beta"}:
-        _prefix = ("https://docs.blender.org/api/%d.%d" %
-                   (bpy.app.version[0], bpy.app.version[1]))
-    else:
-        _prefix = ("https://docs.blender.org/api/master")
+    _prefix = "https://docs.blender.org/api/%d.%d" % bpy.app.version[:2]
 
     def execute(self, _context):
         url = _wm_doc_get_id(self.doc_id, do_url=True, url_prefix=self._prefix, report=self.report)
@@ -1283,12 +1335,6 @@ rna_vector_subtype_items = (
 )
 
 
-# NOTE: needed for Python 3.10 since there are name-space issues with annotations.
-# This can be moved into the class as a static-method once Python 3.9x is dropped.
-def _wm_properties_edit_subtype_items(_self, _context):
-    return WM_OT_properties_edit.subtype_items
-
-
 class WM_OT_properties_edit(Operator):
     """Change a custom property's type, or adjust how it is displayed in the interface"""
     bl_idname = "wm.properties_edit"
@@ -1327,7 +1373,7 @@ class WM_OT_properties_edit(Operator):
         name="Array Length",
         default=3,
         min=1,
-        max=32, # 32 is the maximum size for RNA array properties.
+        max=32,  # 32 is the maximum size for RNA array properties.
     )
 
     # Integer properties.
@@ -1395,7 +1441,7 @@ class WM_OT_properties_edit(Operator):
     )
     subtype: EnumProperty(
         name="Subtype",
-        items=_wm_properties_edit_subtype_items,
+        items=WM_OT_properties_edit.subtype_items,
     )
 
     # String properties.
@@ -1521,7 +1567,7 @@ class WM_OT_properties_edit(Operator):
         elif self.property_type == 'STRING':
             self.default_string = rna_data["default"]
 
-        if self.property_type in { 'FLOAT_ARRAY', 'INT_ARRAY'}:
+        if self.property_type in {'FLOAT_ARRAY', 'INT_ARRAY'}:
             self.array_length = len(item[name])
 
         # The dictionary does not contain the description if it was empty.
@@ -2950,9 +2996,9 @@ class WM_MT_splash_quick_setup(Menu):
 
         layout.label(text="Quick Setup")
 
-        split = layout.split(factor=0.14) # Left margin.
+        split = layout.split(factor=0.14)  # Left margin.
         split.label()
-        split = split.split(factor=0.73) # Content width.
+        split = split.split(factor=0.73)  # Content width.
 
         col = split.column()
 
@@ -3006,7 +3052,7 @@ class WM_MT_splash_quick_setup(Menu):
 
         old_version = bpy.types.PREFERENCES_OT_copy_prev.previous_version()
         if bpy.types.PREFERENCES_OT_copy_prev.poll(context) and old_version:
-            sub.operator("preferences.copy_prev", text="Load %d.%d Settings" % old_version)
+            sub.operator("preferences.copy_prev", text=iface_("Load %d.%d Settings", "Operator") % old_version)
             sub.operator("wm.save_userpref", text="Save New Settings")
         else:
             sub.label()

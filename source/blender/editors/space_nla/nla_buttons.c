@@ -29,6 +29,7 @@
 #include "WM_types.h"
 
 #include "RNA_access.h"
+#include "RNA_prototypes.h"
 
 #include "ED_anim_api.h"
 #include "ED_screen.h"
@@ -106,6 +107,7 @@ bool nla_panel_context(const bContext *C,
         found = 1;
         break;
       }
+      case ANIMTYPE_NLAACTION:
       case ANIMTYPE_SCENE: /* Top-Level Widgets doubling up as datablocks */
       case ANIMTYPE_OBJECT:
       case ANIMTYPE_DSMAT: /* Datablock AnimData Expanders */

@@ -217,6 +217,11 @@ void rna_AttributeGroup_iterator_next(CollectionPropertyIterator *iter);
 PointerRNA rna_AttributeGroup_iterator_get(CollectionPropertyIterator *iter);
 int rna_AttributeGroup_length(PointerRNA *ptr);
 
+void rna_AttributeGroup_color_iterator_begin(CollectionPropertyIterator *iter, PointerRNA *ptr);
+void rna_AttributeGroup_color_iterator_next(CollectionPropertyIterator *iter);
+PointerRNA rna_AttributeGroup_color_iterator_get(CollectionPropertyIterator *iter);
+int rna_AttributeGroup_color_length(PointerRNA *ptr);
+
 void rna_def_animdata_common(struct StructRNA *srna);
 
 bool rna_AnimaData_override_apply(struct Main *bmain,
@@ -313,6 +318,10 @@ void rna_object_vcollayer_name_set(struct PointerRNA *ptr,
 PointerRNA rna_object_shapekey_index_get(struct ID *id, int value);
 int rna_object_shapekey_index_set(struct ID *id, PointerRNA value, int current);
 
+void rna_def_object_type_visibility_flags_common(StructRNA *srna, int noteflag);
+int rna_object_type_visibility_icon_get_common(int object_type_exclude_viewport,
+                                               const int *object_type_exclude_select);
+
 /* ViewLayer related functions defined in rna_scene.c but required in rna_layer.c */
 void rna_def_freestyle_settings(struct BlenderRNA *brna);
 struct PointerRNA rna_FreestyleLineSet_linestyle_get(struct PointerRNA *ptr);
@@ -355,12 +364,16 @@ void rna_ViewLayer_active_aov_index_range(
     PointerRNA *ptr, int *min, int *max, int *softmin, int *softmax);
 int rna_ViewLayer_active_aov_index_get(PointerRNA *ptr);
 void rna_ViewLayer_active_aov_index_set(PointerRNA *ptr, int value);
+void rna_ViewLayer_active_lightgroup_index_range(
+    PointerRNA *ptr, int *min, int *max, int *softmin, int *softmax);
+int rna_ViewLayer_active_lightgroup_index_get(PointerRNA *ptr);
+void rna_ViewLayer_active_lightgroup_index_set(PointerRNA *ptr, int value);
 /**
- *  Set `r_rna_path` with the base view-layer path.
- *  `rna_path_buffer_size` should be at least `sizeof(ViewLayer.name) * 3`.
- *  \return actual length of the generated RNA path.
+ * Set `r_rna_path` with the base view-layer path.
+ * `rna_path_buffer_size` should be at least `sizeof(ViewLayer.name) * 3`.
+ * \return actual length of the generated RNA path.
  */
-size_t rna_ViewLayer_path_buffer_get(struct ViewLayer *view_layer,
+size_t rna_ViewLayer_path_buffer_get(const struct ViewLayer *view_layer,
                                      char *r_rna_path,
                                      const size_t rna_path_buffer_size);
 
@@ -389,11 +402,20 @@ bool rna_GPencil_datablocks_annotations_poll(struct PointerRNA *ptr,
                                              const struct PointerRNA value);
 bool rna_GPencil_datablocks_obdata_poll(struct PointerRNA *ptr, const struct PointerRNA value);
 
-char *rna_TextureSlot_path(struct PointerRNA *ptr);
-char *rna_Node_ImageUser_path(struct PointerRNA *ptr);
+char *rna_TextureSlot_path(const struct PointerRNA *ptr);
+char *rna_Node_ImageUser_path(const struct PointerRNA *ptr);
+char *rna_CameraBackgroundImage_image_or_movieclip_user_path(const struct PointerRNA *ptr);
 
 /* Set U.is_dirty and redraw. */
+
+/**
+ * Use single function so we can more easily break-point it.
+ */
 void rna_userdef_is_dirty_update_impl(void);
+/**
+ * Use as a fallback update handler to ensure #U.runtime.is_dirty is set.
+ * So the preferences are saved when modified.
+ */
 void rna_userdef_is_dirty_update(struct Main *bmain, struct Scene *scene, struct PointerRNA *ptr);
 
 /* API functions */
@@ -492,18 +514,6 @@ void RNA_def_main_simulations(BlenderRNA *brna, PropertyRNA *cprop);
 #endif
 
 /* ID Properties */
-
-extern StringPropertyRNA rna_PropertyGroupItem_string;
-extern IntPropertyRNA rna_PropertyGroupItem_int;
-extern IntPropertyRNA rna_PropertyGroupItem_int_array;
-extern FloatPropertyRNA rna_PropertyGroupItem_float;
-extern FloatPropertyRNA rna_PropertyGroupItem_float_array;
-extern PointerPropertyRNA rna_PropertyGroupItem_group;
-extern PointerPropertyRNA rna_PropertyGroupItem_id;
-extern CollectionPropertyRNA rna_PropertyGroupItem_collection;
-extern CollectionPropertyRNA rna_PropertyGroupItem_idp_array;
-extern FloatPropertyRNA rna_PropertyGroupItem_double;
-extern FloatPropertyRNA rna_PropertyGroupItem_double_array;
 
 #ifndef __RNA_ACCESS_H__
 extern StructRNA RNA_PropertyGroupItem;
@@ -649,7 +659,7 @@ const char *rna_translate_ui_text(const char *text,
                                   struct PropertyRNA *prop,
                                   bool translate);
 
-/* Internal functions that cycles uses so we need to declare (tsk tsk) */
+/* Internal functions that cycles uses so we need to declare (tsk!). */
 void rna_RenderPass_rect_set(PointerRNA *ptr, const float *values);
 
 #ifdef RNA_RUNTIME

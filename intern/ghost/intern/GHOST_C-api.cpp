@@ -7,8 +7,8 @@
  * C Api for GHOST
  */
 
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 
 #include "GHOST_C-api.h"
 #include "GHOST_IEvent.h"
@@ -30,11 +30,11 @@ GHOST_SystemHandle GHOST_CreateSystem(void)
   return (GHOST_SystemHandle)system;
 }
 
-void GHOST_SystemInitDebug(GHOST_SystemHandle systemhandle, int is_debug_enabled)
+void GHOST_SystemInitDebug(GHOST_SystemHandle systemhandle, GHOST_Debug debug)
 {
   GHOST_ISystem *system = (GHOST_ISystem *)systemhandle;
 
-  system->initDebug(is_debug_enabled);
+  system->initDebug(debug);
 }
 
 GHOST_TSuccess GHOST_DisposeSystem(GHOST_SystemHandle systemhandle)
@@ -206,13 +206,15 @@ GHOST_WindowHandle GHOST_BeginFullScreen(GHOST_SystemHandle systemhandle,
                                          const int stereoVisual)
 {
   GHOST_ISystem *system = (GHOST_ISystem *)systemhandle;
-  GHOST_IWindow *window = NULL;
+  GHOST_IWindow *window = nullptr;
   bool bstereoVisual;
 
-  if (stereoVisual)
+  if (stereoVisual) {
     bstereoVisual = true;
-  else
+  }
+  else {
     bstereoVisual = false;
+  }
 
   system->beginFullScreen(*setting, &window, bstereoVisual);
 
@@ -231,6 +233,16 @@ int GHOST_GetFullScreen(GHOST_SystemHandle systemhandle)
   GHOST_ISystem *system = (GHOST_ISystem *)systemhandle;
 
   return (int)system->getFullScreen();
+}
+
+GHOST_WindowHandle GHOST_GetWindowUnderCursor(GHOST_SystemHandle systemhandle,
+                                              int32_t x,
+                                              int32_t y)
+{
+  GHOST_ISystem *system = (GHOST_ISystem *)systemhandle;
+  GHOST_IWindow *window = system->getWindowUnderCursor(x, y);
+
+  return (GHOST_WindowHandle)window;
 }
 
 bool GHOST_ProcessEvents(GHOST_SystemHandle systemhandle, bool waitForEvent)
@@ -361,7 +373,21 @@ GHOST_TSuccess GHOST_SetCursorGrab(GHOST_WindowHandle windowhandle,
   }
 
   return window->setCursorGrab(
-      mode, wrap_axis, bounds ? &bounds_rect : NULL, mouse_ungrab_xy ? mouse_xy : NULL);
+      mode, wrap_axis, bounds ? &bounds_rect : nullptr, mouse_ungrab_xy ? mouse_xy : nullptr);
+}
+
+void GHOST_GetCursorGrabState(GHOST_WindowHandle windowhandle,
+                              GHOST_TGrabCursorMode *r_mode,
+                              GHOST_TAxisFlag *r_axis_flag,
+                              int r_bounds[4])
+{
+  GHOST_IWindow *window = (GHOST_IWindow *)windowhandle;
+  GHOST_Rect bounds_rect;
+  window->getCursorGrabState(*r_mode, *r_axis_flag, bounds_rect);
+  r_bounds[0] = bounds_rect.m_l;
+  r_bounds[1] = bounds_rect.m_t;
+  r_bounds[2] = bounds_rect.m_r;
+  r_bounds[3] = bounds_rect.m_b;
 }
 
 GHOST_TSuccess GHOST_GetModifierKeyState(GHOST_SystemHandle systemhandle,
@@ -499,8 +525,8 @@ char *GHOST_GetTitle(GHOST_WindowHandle windowhandle)
 
   char *ctitle = (char *)malloc(title.size() + 1);
 
-  if (ctitle == NULL) {
-    return NULL;
+  if (ctitle == nullptr) {
+    return nullptr;
   }
 
   strcpy(ctitle, title.c_str());
@@ -511,7 +537,7 @@ char *GHOST_GetTitle(GHOST_WindowHandle windowhandle)
 GHOST_RectangleHandle GHOST_GetWindowBounds(GHOST_WindowHandle windowhandle)
 {
   GHOST_IWindow *window = (GHOST_IWindow *)windowhandle;
-  GHOST_Rect *rectangle = NULL;
+  GHOST_Rect *rectangle = nullptr;
 
   rectangle = new GHOST_Rect();
   window->getWindowBounds(*rectangle);
@@ -522,7 +548,7 @@ GHOST_RectangleHandle GHOST_GetWindowBounds(GHOST_WindowHandle windowhandle)
 GHOST_RectangleHandle GHOST_GetClientBounds(GHOST_WindowHandle windowhandle)
 {
   GHOST_IWindow *window = (GHOST_IWindow *)windowhandle;
-  GHOST_Rect *rectangle = NULL;
+  GHOST_Rect *rectangle = nullptr;
 
   rectangle = new GHOST_Rect();
   window->getClientBounds(*rectangle);
@@ -636,10 +662,8 @@ GHOST_TSuccess GHOST_ActivateOpenGLContext(GHOST_ContextHandle contexthandle)
   if (context) {
     return context->activateDrawingContext();
   }
-  else {
-    GHOST_PRINTF("%s: Context not valid\n", __func__);
-    return GHOST_kFailure;
-  }
+  GHOST_PRINTF("%s: Context not valid\n", __func__);
+  return GHOST_kFailure;
 }
 
 GHOST_TSuccess GHOST_ReleaseOpenGLContext(GHOST_ContextHandle contexthandle)
@@ -707,9 +731,9 @@ GHOST_TSuccess GHOST_IsEmptyRectangle(GHOST_RectangleHandle rectanglehandle)
 {
   GHOST_TSuccess result = GHOST_kFailure;
 
-  if (((GHOST_Rect *)rectanglehandle)->isEmpty())
+  if (((GHOST_Rect *)rectanglehandle)->isEmpty()) {
     result = GHOST_kSuccess;
-
+  }
   return result;
 }
 
@@ -717,9 +741,9 @@ GHOST_TSuccess GHOST_IsValidRectangle(GHOST_RectangleHandle rectanglehandle)
 {
   GHOST_TSuccess result = GHOST_kFailure;
 
-  if (((GHOST_Rect *)rectanglehandle)->isValid())
+  if (((GHOST_Rect *)rectanglehandle)->isValid()) {
     result = GHOST_kSuccess;
-
+  }
   return result;
 }
 
@@ -743,9 +767,9 @@ GHOST_TSuccess GHOST_IsInsideRectangle(GHOST_RectangleHandle rectanglehandle, in
 {
   GHOST_TSuccess result = GHOST_kFailure;
 
-  if (((GHOST_Rect *)rectanglehandle)->isInside(x, y))
+  if (((GHOST_Rect *)rectanglehandle)->isInside(x, y)) {
     result = GHOST_kSuccess;
-
+  }
   return result;
 }
 
@@ -775,9 +799,9 @@ GHOST_TSuccess GHOST_ClipRectangle(GHOST_RectangleHandle rectanglehandle,
 {
   GHOST_TSuccess result = GHOST_kFailure;
 
-  if (((GHOST_Rect *)rectanglehandle)->clip(*(GHOST_Rect *)anotherrectanglehandle))
+  if (((GHOST_Rect *)rectanglehandle)->clip(*(GHOST_Rect *)anotherrectanglehandle)) {
     result = GHOST_kSuccess;
-
+  }
   return result;
 }
 
@@ -805,6 +829,17 @@ int GHOST_UseNativePixels(void)
   return system->useNativePixel();
 }
 
+int GHOST_SupportsCursorWarp(void)
+{
+  GHOST_ISystem *system = GHOST_ISystem::getSystem();
+  return system->supportsCursorWarp();
+}
+
+void GHOST_SetBacktraceHandler(GHOST_TBacktraceFn backtrace_fn)
+{
+  GHOST_ISystem::setBacktraceFn(backtrace_fn);
+}
+
 void GHOST_UseWindowFocus(int use_focus)
 {
   GHOST_ISystem *system = GHOST_ISystem::getSystem();
@@ -814,8 +849,9 @@ void GHOST_UseWindowFocus(int use_focus)
 float GHOST_GetNativePixelSize(GHOST_WindowHandle windowhandle)
 {
   GHOST_IWindow *window = (GHOST_IWindow *)windowhandle;
-  if (window)
+  if (window) {
     return window->getNativePixelSize();
+  }
   return 1.0f;
 }
 

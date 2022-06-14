@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-# <pep8 compliant>
-
 __all__ = (
     "draw_entry",
     "draw_km",
@@ -179,6 +177,10 @@ def draw_kmi(display_keymaps, kc, km, kmi, layout, level):
             elif map_type in {'MOUSE', 'NDOF'}:
                 subrow.prop(kmi, "type", text="")
                 subrow.prop(kmi, "value", text="")
+
+            if map_type in {'KEYBOARD', 'MOUSE'} and kmi.value == 'CLICK_DRAG':
+                subrow = sub.row()
+                subrow.prop(kmi, "direction")
 
             subrow = sub.row()
             subrow.scale_x = 0.75

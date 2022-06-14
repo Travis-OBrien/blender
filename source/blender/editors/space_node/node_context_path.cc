@@ -18,14 +18,13 @@
 #include "BKE_screen.h"
 
 #include "RNA_access.h"
+#include "RNA_prototypes.h"
 
 #include "ED_screen.h"
 
 #include "UI_interface.h"
 #include "UI_interface.hh"
 #include "UI_resources.h"
-
-#include "UI_interface.hh"
 
 #include "node_intern.hh"
 
@@ -47,7 +46,7 @@ static void context_path_add_object_data(Vector<ui::ContextPathItem> &path, Obje
     Light *light = (Light *)object.data;
     ui::context_path_add_generic(path, RNA_Light, light);
   }
-  if (ELEM(object.type, OB_CURVE, OB_FONT, OB_SURF) && object.data) {
+  if (ELEM(object.type, OB_CURVES_LEGACY, OB_FONT, OB_SURF) && object.data) {
     Curve *curve = (Curve *)object.data;
     ui::context_path_add_generic(path, RNA_Curve, curve);
   }
@@ -138,7 +137,7 @@ static void get_context_path_node_geometry(const bContext &C,
     Object *object = CTX_data_active_object(&C);
     ui::context_path_add_generic(path, RNA_Object, object);
     ModifierData *modifier = BKE_object_active_modifier(object);
-    ui::context_path_add_generic(path, RNA_Modifier, modifier, ICON_MODIFIER);
+    ui::context_path_add_generic(path, RNA_Modifier, modifier, ICON_GEOMETRY_NODES);
     context_path_add_node_tree_and_node_groups(snode, path);
   }
 }

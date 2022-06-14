@@ -7,9 +7,8 @@
 
 #include <stdio.h>
 
-#include "BLI_utildefines.h"
-
 #include "BLI_math_vector.h"
+#include "BLI_utildefines.h"
 
 #include "BLT_translation.h"
 
@@ -21,9 +20,6 @@
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
-
-#include "MOD_gpencil_lineart.h"
-#include "lineart/MOD_lineart.h"
 
 #include "BKE_collection.h"
 #include "BKE_context.h"
@@ -43,8 +39,10 @@
 #include "DEG_depsgraph.h"
 #include "DEG_depsgraph_query.h"
 
+#include "MOD_gpencil_lineart.h"
 #include "MOD_gpencil_modifiertypes.h"
 #include "MOD_gpencil_ui_common.h"
+#include "lineart/MOD_lineart.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -218,9 +216,18 @@ static void add_this_collection(Collection *c,
   if (!c) {
     return;
   }
+  bool default_add = true;
+  /* Do not do nested collection usage check, this is consistent with lineart calculation, because
+   * collection usage doesn't have a INHERIT mode. This might initially be derived from the fact
+   * that an object can be inside multiple collections, but might be irrelevant now with the way
+   * objects are iterated. Keep this logic for now. */
+  if (c->lineart_usage & COLLECTION_LRT_EXCLUDE) {
+    default_add = false;
+  }
   FOREACH_COLLECTION_VISIBLE_OBJECT_RECURSIVE_BEGIN (c, ob, mode) {
-    if (ELEM(ob->type, OB_MESH, OB_MBALL, OB_CURVE, OB_SURF, OB_FONT)) {
-      if (ob->lineart.usage != OBJECT_LRT_EXCLUDE) {
+    if (ELEM(ob->type, OB_MESH, OB_MBALL, OB_CURVES_LEGACY, OB_SURF, OB_FONT)) {
+      if ((ob->lineart.usage == OBJECT_LRT_INHERIT && default_add) ||
+          ob->lineart.usage != OBJECT_LRT_EXCLUDE) {
         DEG_add_object_relation(ctx->node, ob, DEG_OB_COMP_GEOMETRY, "Line Art Modifier");
         DEG_add_object_relation(ctx->node, ob, DEG_OB_COMP_TRANSFORM, "Line Art Modifier");
       }
@@ -239,15 +246,11 @@ static void updateDepsgraph(GpencilModifierData *md,
   DEG_add_object_relation(ctx->node, ctx->object, DEG_OB_COMP_TRANSFORM, "Line Art Modifier");
 
   LineartGpencilModifierData *lmd = (LineartGpencilModifierData *)md;
-  if (lmd->source_type == LRT_SOURCE_OBJECT && lmd->source_object) {
-    DEG_add_object_relation(
-        ctx->node, lmd->source_object, DEG_OB_COMP_GEOMETRY, "Line Art Modifier");
-    DEG_add_object_relation(
-        ctx->node, lmd->source_object, DEG_OB_COMP_TRANSFORM, "Line Art Modifier");
-  }
-  else {
-    add_this_collection(ctx->scene->master_collection, ctx, mode);
-  }
+
+  /* Always add whole master collection because line art will need the whole scene for
+   * visibility computation. Line art exclusion is handled inside #add_this_collection. */
+  add_this_collection(ctx->scene->master_collection, ctx, mode);
+
   if (lmd->calculation_flags & LRT_USE_CUSTOM_CAMERA && lmd->source_camera) {
     DEG_add_object_relation(
         ctx->node, lmd->source_camera, DEG_OB_COMP_TRANSFORM, "Line Art Modifier");
@@ -349,7 +352,7 @@ static void edge_types_panel_draw(const bContext *UNUSED(C), Panel *panel)
   uiLayout *sub = uiLayoutRowWithHeading(col, false, IFACE_("Crease"));
   uiItemR(sub, ptr, "use_crease", 0, "", ICON_NONE);
   uiLayout *entry = uiLayoutRow(sub, false);
-  uiLayoutSetEnabled(entry, RNA_boolean_get(ptr, "use_crease") || is_first);
+  uiLayoutSetActive(entry, RNA_boolean_get(ptr, "use_crease") || is_first);
   if (use_cache && !is_first) {
     uiItemL(entry, IFACE_("Angle Cached"), ICON_INFO);
   }
@@ -387,13 +390,12 @@ static void options_panel_draw(const bContext *UNUSED(C), Panel *panel)
 
   uiLayout *col = uiLayoutColumn(layout, true);
 
-  uiItemR(col, ptr, "use_remove_doubles", 0, NULL, ICON_NONE);
   uiItemR(col, ptr, "use_edge_overlap", 0, IFACE_("Overlapping Edges As Contour"), ICON_NONE);
   uiItemR(col, ptr, "use_object_instances", 0, NULL, ICON_NONE);
   uiItemR(col, ptr, "use_clip_plane_boundaries", 0, NULL, ICON_NONE);
   uiItemR(col, ptr, "use_crease_on_smooth", 0, IFACE_("Crease On Smooth"), ICON_NONE);
   uiItemR(col, ptr, "use_crease_on_sharp", 0, IFACE_("Crease On Sharp"), ICON_NONE);
-  uiItemR(col, ptr, "use_back_face_culling", 0, NULL, ICON_NONE);
+  uiItemR(col, ptr, "use_back_face_culling", 0, IFACE_("Force Backface Culling"), ICON_NONE);
 }
 
 static void style_panel_draw(const bContext *UNUSED(C), Panel *panel)
@@ -522,6 +524,7 @@ static void intersection_panel_draw(const bContext *UNUSED(C), Panel *panel)
 
   uiItemR(layout, ptr, "use_intersection_match", 0, IFACE_("Exact Match"), ICON_NONE);
 }
+
 static void face_mark_panel_draw_header(const bContext *UNUSED(C), Panel *panel)
 {
   uiLayout *layout = panel->layout;

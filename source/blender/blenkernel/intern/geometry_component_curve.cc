@@ -14,27 +14,27 @@
 
 #include "attribute_access_intern.hh"
 
-using blender::fn::GMutableSpan;
-using blender::fn::GSpan;
-using blender::fn::GVArray;
-using blender::fn::GVArray_GSpan;
+using blender::GMutableSpan;
+using blender::GSpan;
+using blender::GVArray;
+using blender::GVArray_GSpan;
 
 /* -------------------------------------------------------------------- */
 /** \name Geometry Component Implementation
  * \{ */
 
-CurveComponent::CurveComponent() : GeometryComponent(GEO_COMPONENT_TYPE_CURVE)
+CurveComponentLegacy::CurveComponentLegacy() : GeometryComponent(GEO_COMPONENT_TYPE_CURVE)
 {
 }
 
-CurveComponent::~CurveComponent()
+CurveComponentLegacy::~CurveComponentLegacy()
 {
   this->clear();
 }
 
-GeometryComponent *CurveComponent::copy() const
+GeometryComponent *CurveComponentLegacy::copy() const
 {
-  CurveComponent *new_component = new CurveComponent();
+  CurveComponentLegacy *new_component = new CurveComponentLegacy();
   if (curve_ != nullptr) {
     new_component->curve_ = new CurveEval(*curve_);
     new_component->ownership_ = GeometryOwnershipType::Owned;
@@ -42,30 +42,23 @@ GeometryComponent *CurveComponent::copy() const
   return new_component;
 }
 
-void CurveComponent::clear()
+void CurveComponentLegacy::clear()
 {
   BLI_assert(this->is_mutable());
   if (curve_ != nullptr) {
     if (ownership_ == GeometryOwnershipType::Owned) {
       delete curve_;
     }
-    if (curve_for_render_ != nullptr) {
-      /* The curve created by this component should not have any edit mode data. */
-      BLI_assert(curve_for_render_->editfont == nullptr && curve_for_render_->editnurb == nullptr);
-      BKE_id_free(nullptr, curve_for_render_);
-      curve_for_render_ = nullptr;
-    }
-
     curve_ = nullptr;
   }
 }
 
-bool CurveComponent::has_curve() const
+bool CurveComponentLegacy::has_curve() const
 {
   return curve_ != nullptr;
 }
 
-void CurveComponent::replace(CurveEval *curve, GeometryOwnershipType ownership)
+void CurveComponentLegacy::replace(CurveEval *curve, GeometryOwnershipType ownership)
 {
   BLI_assert(this->is_mutable());
   this->clear();
@@ -73,7 +66,7 @@ void CurveComponent::replace(CurveEval *curve, GeometryOwnershipType ownership)
   ownership_ = ownership;
 }
 
-CurveEval *CurveComponent::release()
+CurveEval *CurveComponentLegacy::release()
 {
   BLI_assert(this->is_mutable());
   CurveEval *curve = curve_;
@@ -81,12 +74,12 @@ CurveEval *CurveComponent::release()
   return curve;
 }
 
-const CurveEval *CurveComponent::get_for_read() const
+const CurveEval *CurveComponentLegacy::get_for_read() const
 {
   return curve_;
 }
 
-CurveEval *CurveComponent::get_for_write()
+CurveEval *CurveComponentLegacy::get_for_write()
 {
   BLI_assert(this->is_mutable());
   if (ownership_ == GeometryOwnershipType::ReadOnly) {
@@ -96,17 +89,17 @@ CurveEval *CurveComponent::get_for_write()
   return curve_;
 }
 
-bool CurveComponent::is_empty() const
+bool CurveComponentLegacy::is_empty() const
 {
   return curve_ == nullptr;
 }
 
-bool CurveComponent::owns_direct_data() const
+bool CurveComponentLegacy::owns_direct_data() const
 {
   return ownership_ == GeometryOwnershipType::Owned;
 }
 
-void CurveComponent::ensure_owns_direct_data()
+void CurveComponentLegacy::ensure_owns_direct_data()
 {
   BLI_assert(this->is_mutable());
   if (ownership_ != GeometryOwnershipType::Owned) {
@@ -115,32 +108,13 @@ void CurveComponent::ensure_owns_direct_data()
   }
 }
 
-const Curve *CurveComponent::get_curve_for_render() const
-{
-  if (curve_ == nullptr) {
-    return nullptr;
-  }
-  if (curve_for_render_ != nullptr) {
-    return curve_for_render_;
-  }
-  std::lock_guard lock{curve_for_render_mutex_};
-  if (curve_for_render_ != nullptr) {
-    return curve_for_render_;
-  }
-
-  curve_for_render_ = (Curve *)BKE_id_new_nomain(ID_CU, nullptr);
-  curve_for_render_->curve_eval = curve_;
-
-  return curve_for_render_;
-}
-
 /** \} */
 
 /* -------------------------------------------------------------------- */
 /** \name Attribute Access Helper Functions
  * \{ */
 
-int CurveComponent::attribute_domain_size(const AttributeDomain domain) const
+int CurveComponentLegacy::attribute_domain_num(const eAttrDomain domain) const
 {
   if (curve_ == nullptr) {
     return 0;
@@ -277,8 +251,8 @@ template<typename T> class VArray_For_SplineToPoint final : public VArrayImpl<T>
 
   void materialize(const IndexMask mask, MutableSpan<T> r_span) const final
   {
-    const int total_size = offsets_.last();
-    if (mask.is_range() && mask.as_range() == IndexRange(total_size)) {
+    const int total_num = offsets_.last();
+    if (mask.is_range() && mask.as_range() == IndexRange(total_num)) {
       for (const int spline_index : original_data_.index_range()) {
         const int offset = offsets_[spline_index];
         const int next_offset = offsets_[spline_index + 1];
@@ -299,8 +273,8 @@ template<typename T> class VArray_For_SplineToPoint final : public VArrayImpl<T>
   void materialize_to_uninitialized(const IndexMask mask, MutableSpan<T> r_span) const final
   {
     T *dst = r_span.data();
-    const int total_size = offsets_.last();
-    if (mask.is_range() && mask.as_range() == IndexRange(total_size)) {
+    const int total_num = offsets_.last();
+    if (mask.is_range() && mask.as_range() == IndexRange(total_num)) {
       for (const int spline_index : original_data_.index_range()) {
         const int offset = offsets_[spline_index];
         const int next_offset = offsets_[spline_index + 1];
@@ -334,9 +308,9 @@ static GVArray adapt_curve_domain_spline_to_point(const CurveEval &curve, GVArra
 
 }  // namespace blender::bke
 
-GVArray CurveComponent::attribute_try_adapt_domain_impl(const GVArray &varray,
-                                                        const AttributeDomain from_domain,
-                                                        const AttributeDomain to_domain) const
+GVArray CurveComponentLegacy::attribute_try_adapt_domain_impl(const GVArray &varray,
+                                                              const eAttrDomain from_domain,
+                                                              const eAttrDomain to_domain) const
 {
   if (!varray) {
     return {};
@@ -361,112 +335,21 @@ GVArray CurveComponent::attribute_try_adapt_domain_impl(const GVArray &varray,
 static CurveEval *get_curve_from_component_for_write(GeometryComponent &component)
 {
   BLI_assert(component.type() == GEO_COMPONENT_TYPE_CURVE);
-  CurveComponent &curve_component = static_cast<CurveComponent &>(component);
+  CurveComponentLegacy &curve_component = static_cast<CurveComponentLegacy &>(component);
   return curve_component.get_for_write();
 }
 
 static const CurveEval *get_curve_from_component_for_read(const GeometryComponent &component)
 {
   BLI_assert(component.type() == GEO_COMPONENT_TYPE_CURVE);
-  const CurveComponent &curve_component = static_cast<const CurveComponent &>(component);
+  const CurveComponentLegacy &curve_component = static_cast<const CurveComponentLegacy &>(
+      component);
   return curve_component.get_for_read();
 }
 
 /** \} */
 
 namespace blender::bke {
-
-/* -------------------------------------------------------------------- */
-/** \name Curve Normals Access
- * \{ */
-
-static void calculate_bezier_normals(const BezierSpline &spline, MutableSpan<float3> normals)
-{
-  Span<int> offsets = spline.control_point_offsets();
-  Span<float3> evaluated_normals = spline.evaluated_normals();
-  for (const int i : IndexRange(spline.size())) {
-    normals[i] = evaluated_normals[offsets[i]];
-  }
-}
-
-static void calculate_poly_normals(const PolySpline &spline, MutableSpan<float3> normals)
-{
-  normals.copy_from(spline.evaluated_normals());
-}
-
-/**
- * Because NURBS control points are not necessarily on the path, the normal at the control points
- * is not well defined, so create a temporary poly spline to find the normals. This requires extra
- * copying currently, but may be more efficient in the future if attributes have some form of CoW.
- */
-static void calculate_nurbs_normals(const NURBSpline &spline, MutableSpan<float3> normals)
-{
-  PolySpline poly_spline;
-  poly_spline.resize(spline.size());
-  poly_spline.positions().copy_from(spline.positions());
-  poly_spline.tilts().copy_from(spline.tilts());
-  normals.copy_from(poly_spline.evaluated_normals());
-}
-
-static Array<float3> curve_normal_point_domain(const CurveEval &curve)
-{
-  Span<SplinePtr> splines = curve.splines();
-  Array<int> offsets = curve.control_point_offsets();
-  const int total_size = offsets.last();
-  Array<float3> normals(total_size);
-
-  threading::parallel_for(splines.index_range(), 128, [&](IndexRange range) {
-    for (const int i : range) {
-      const Spline &spline = *splines[i];
-      MutableSpan spline_normals{normals.as_mutable_span().slice(offsets[i], spline.size())};
-      switch (splines[i]->type()) {
-        case Spline::Type::Bezier:
-          calculate_bezier_normals(static_cast<const BezierSpline &>(spline), spline_normals);
-          break;
-        case Spline::Type::Poly:
-          calculate_poly_normals(static_cast<const PolySpline &>(spline), spline_normals);
-          break;
-        case Spline::Type::NURBS:
-          calculate_nurbs_normals(static_cast<const NURBSpline &>(spline), spline_normals);
-          break;
-      }
-    }
-  });
-  return normals;
-}
-
-VArray<float3> curve_normals_varray(const CurveComponent &component, const AttributeDomain domain)
-{
-  const CurveEval *curve = component.get_for_read();
-  if (curve == nullptr) {
-    return nullptr;
-  }
-
-  if (domain == ATTR_DOMAIN_POINT) {
-    const Span<SplinePtr> splines = curve->splines();
-
-    /* Use a reference to evaluated normals if possible to avoid an allocation and a copy.
-     * This is only possible when there is only one poly spline. */
-    if (splines.size() == 1 && splines.first()->type() == Spline::Type::Poly) {
-      const PolySpline &spline = static_cast<PolySpline &>(*splines.first());
-      return VArray<float3>::ForSpan(spline.evaluated_normals());
-    }
-
-    Array<float3> normals = curve_normal_point_domain(*curve);
-    return VArray<float3>::ForContainer(std::move(normals));
-  }
-
-  if (domain == ATTR_DOMAIN_CURVE) {
-    Array<float3> point_normals = curve_normal_point_domain(*curve);
-    VArray<float3> varray = VArray<float3>::ForContainer(std::move(point_normals));
-    return component.attribute_try_adapt_domain<float3>(
-        std::move(varray), ATTR_DOMAIN_POINT, ATTR_DOMAIN_CURVE);
-  }
-
-  return nullptr;
-}
-
-/** \} */
 
 /* -------------------------------------------------------------------- */
 /** \name Builtin Spline Attributes
@@ -482,7 +365,7 @@ class BuiltinSplineAttributeProvider final : public BuiltinAttributeProvider {
 
  public:
   BuiltinSplineAttributeProvider(std::string attribute_name,
-                                 const CustomDataType attribute_type,
+                                 const eCustomDataType attribute_type,
                                  const WritableEnum writable,
                                  const AsReadAttribute as_read_attribute,
                                  const AsWriteAttribute as_write_attribute)
@@ -531,7 +414,7 @@ class BuiltinSplineAttributeProvider final : public BuiltinAttributeProvider {
 
   bool exists(const GeometryComponent &component) const final
   {
-    return component.attribute_domain_size(ATTR_DOMAIN_CURVE) != 0;
+    return component.attribute_domain_num(ATTR_DOMAIN_CURVE) != 0;
   }
 };
 
@@ -611,8 +494,8 @@ static void point_attribute_materialize(Span<Span<T>> data,
                                         const IndexMask mask,
                                         MutableSpan<T> r_span)
 {
-  const int total_size = offsets.last();
-  if (mask.is_range() && mask.as_range() == IndexRange(total_size)) {
+  const int total_num = offsets.last();
+  if (mask.is_range() && mask.as_range() == IndexRange(total_num)) {
     for (const int spline_index : data.index_range()) {
       const int offset = offsets[spline_index];
       const int next_offset = offsets[spline_index + 1];
@@ -657,8 +540,8 @@ static void point_attribute_materialize_to_uninitialized(Span<Span<T>> data,
                                                          MutableSpan<T> r_span)
 {
   T *dst = r_span.data();
-  const int total_size = offsets.last();
-  if (mask.is_range() && mask.as_range() == IndexRange(total_size)) {
+  const int total_num = offsets.last();
+  if (mask.is_range() && mask.as_range() == IndexRange(total_num)) {
     for (const int spline_index : data.index_range()) {
       const int offset = offsets[spline_index];
       const int next_offset = offsets[spline_index + 1];
@@ -693,7 +576,7 @@ static void point_attribute_materialize_to_uninitialized(Span<Span<T>> data,
 }
 
 static GVArray varray_from_initializer(const AttributeInit &initializer,
-                                       const CustomDataType data_type,
+                                       const eCustomDataType data_type,
                                        const Span<SplinePtr> splines)
 {
   switch (initializer.type) {
@@ -705,13 +588,13 @@ static GVArray varray_from_initializer(const AttributeInit &initializer,
     case AttributeInit::Type::VArray:
       return static_cast<const AttributeInitVArray &>(initializer).varray;
     case AttributeInit::Type::MoveArray:
-      int total_size = 0;
+      int total_num = 0;
       for (const SplinePtr &spline : splines) {
-        total_size += spline->size();
+        total_num += spline->size();
       }
       return GVArray::ForSpan(GSpan(*bke::custom_data_type_to_cpp_type(data_type),
                                     static_cast<const AttributeInitMove &>(initializer).data,
-                                    total_size));
+                                    total_num));
   }
   BLI_assert_unreachable();
   return {};
@@ -720,7 +603,7 @@ static GVArray varray_from_initializer(const AttributeInit &initializer,
 static bool create_point_attribute(GeometryComponent &component,
                                    const AttributeIDRef &attribute_id,
                                    const AttributeInit &initializer,
-                                   const CustomDataType data_type)
+                                   const eCustomDataType data_type)
 {
   CurveEval *curve = get_curve_from_component_for_write(component);
   if (curve == nullptr || curve->splines().size() == 0) {
@@ -877,15 +760,7 @@ class VArrayImpl_For_SplinePosition final : public VMutableArrayImpl<float3> {
   {
     const PointIndices indices = lookup_point_indices(offsets_, index);
     Spline &spline = *splines_[indices.spline_index];
-    if (BezierSpline *bezier_spline = dynamic_cast<BezierSpline *>(&spline)) {
-      const float3 delta = value - bezier_spline->positions()[indices.point_index];
-      bezier_spline->handle_positions_left()[indices.point_index] += delta;
-      bezier_spline->handle_positions_right()[indices.point_index] += delta;
-      bezier_spline->positions()[indices.point_index] = value;
-    }
-    else {
-      spline.positions()[indices.point_index] = value;
-    }
+    spline.positions()[indices.point_index] = value;
   }
 
   void set_all(Span<float3> src) final
@@ -894,20 +769,7 @@ class VArrayImpl_For_SplinePosition final : public VMutableArrayImpl<float3> {
       Spline &spline = *splines_[spline_index];
       const int offset = offsets_[spline_index];
       const int next_offset = offsets_[spline_index + 1];
-      if (BezierSpline *bezier_spline = dynamic_cast<BezierSpline *>(&spline)) {
-        MutableSpan<float3> positions = bezier_spline->positions();
-        MutableSpan<float3> handle_positions_left = bezier_spline->handle_positions_left();
-        MutableSpan<float3> handle_positions_right = bezier_spline->handle_positions_right();
-        for (const int i : IndexRange(next_offset - offset)) {
-          const float3 delta = src[offset + i] - positions[i];
-          handle_positions_left[i] += delta;
-          handle_positions_right[i] += delta;
-          positions[i] = src[offset + i];
-        }
-      }
-      else {
-        spline.positions().copy_from(src.slice(offset, next_offset - offset));
-      }
+      spline.positions().copy_from(src.slice(offset, next_offset - offset));
     }
   }
 
@@ -955,7 +817,7 @@ class VArrayImpl_For_BezierHandles final : public VMutableArrayImpl<float3> {
   {
     const PointIndices indices = lookup_point_indices(offsets_, index);
     const Spline &spline = *splines_[indices.spline_index];
-    if (spline.type() == Spline::Type::Bezier) {
+    if (spline.type() == CURVE_TYPE_BEZIER) {
       const BezierSpline &bezier_spline = static_cast<const BezierSpline &>(spline);
       return is_right_ ? bezier_spline.handle_positions_right()[indices.point_index] :
                          bezier_spline.handle_positions_left()[indices.point_index];
@@ -967,13 +829,13 @@ class VArrayImpl_For_BezierHandles final : public VMutableArrayImpl<float3> {
   {
     const PointIndices indices = lookup_point_indices(offsets_, index);
     Spline &spline = *splines_[indices.spline_index];
-    if (spline.type() == Spline::Type::Bezier) {
+    if (spline.type() == CURVE_TYPE_BEZIER) {
       BezierSpline &bezier_spline = static_cast<BezierSpline &>(spline);
       if (is_right_) {
-        bezier_spline.set_handle_position_right(indices.point_index, value);
+        bezier_spline.handle_positions_right()[indices.point_index] = value;
       }
       else {
-        bezier_spline.set_handle_position_left(indices.point_index, value);
+        bezier_spline.handle_positions_left()[indices.point_index] = value;
       }
       bezier_spline.mark_cache_invalid();
     }
@@ -983,18 +845,18 @@ class VArrayImpl_For_BezierHandles final : public VMutableArrayImpl<float3> {
   {
     for (const int spline_index : splines_.index_range()) {
       Spline &spline = *splines_[spline_index];
-      if (spline.type() == Spline::Type::Bezier) {
+      if (spline.type() == CURVE_TYPE_BEZIER) {
         const int offset = offsets_[spline_index];
 
         BezierSpline &bezier_spline = static_cast<BezierSpline &>(spline);
         if (is_right_) {
           for (const int i : IndexRange(bezier_spline.size())) {
-            bezier_spline.set_handle_position_right(i, src[offset + i]);
+            bezier_spline.handle_positions_right()[i] = src[offset + i];
           }
         }
         else {
           for (const int i : IndexRange(bezier_spline.size())) {
-            bezier_spline.set_handle_position_left(i, src[offset + i]);
+            bezier_spline.handle_positions_left()[i] = src[offset + i];
           }
         }
         bezier_spline.mark_cache_invalid();
@@ -1024,7 +886,7 @@ class VArrayImpl_For_BezierHandles final : public VMutableArrayImpl<float3> {
   {
     Array<Span<float3>> spans(splines.size());
     for (const int i : spans.index_range()) {
-      if (splines[i]->type() == Spline::Type::Bezier) {
+      if (splines[i]->type() == CURVE_TYPE_BEZIER) {
         BezierSpline &bezier_spline = static_cast<BezierSpline &>(*splines[i]);
         spans[i] = is_right ? bezier_spline.handle_positions_right() :
                               bezier_spline.handle_positions_left();
@@ -1214,7 +1076,7 @@ class PositionAttributeProvider final : public BuiltinPointAttributeProvider<flo
 
     /* Use the regular position virtual array when there aren't any Bezier splines
      * to avoid the overhead of checking the spline type for every point. */
-    if (!curve->has_spline_with_type(Spline::Type::Bezier)) {
+    if (!curve->has_spline_with_type(CURVE_TYPE_BEZIER)) {
       return BuiltinPointAttributeProvider<float3>::try_get_for_write(component);
     }
 
@@ -1255,7 +1117,7 @@ class BezierHandleAttributeProvider : public BuiltinAttributeProvider {
       return {};
     }
 
-    if (!curve->has_spline_with_type(Spline::Type::Bezier)) {
+    if (!curve->has_spline_with_type(CURVE_TYPE_BEZIER)) {
       return {};
     }
 
@@ -1273,7 +1135,7 @@ class BezierHandleAttributeProvider : public BuiltinAttributeProvider {
       return {};
     }
 
-    if (!curve->has_spline_with_type(Spline::Type::Bezier)) {
+    if (!curve->has_spline_with_type(CURVE_TYPE_BEZIER)) {
       return {};
     }
 
@@ -1304,8 +1166,8 @@ class BezierHandleAttributeProvider : public BuiltinAttributeProvider {
       return false;
     }
 
-    return curve->has_spline_with_type(Spline::Type::Bezier) &&
-           component.attribute_domain_size(ATTR_DOMAIN_POINT) != 0;
+    return curve->has_spline_with_type(CURVE_TYPE_BEZIER) &&
+           component.attribute_domain_num(ATTR_DOMAIN_POINT) != 0;
   }
 };
 
@@ -1324,7 +1186,8 @@ class DynamicPointAttributeProvider final : public DynamicAttributesProvider {
  private:
   static constexpr uint64_t supported_types_mask = CD_MASK_PROP_FLOAT | CD_MASK_PROP_FLOAT2 |
                                                    CD_MASK_PROP_FLOAT3 | CD_MASK_PROP_INT32 |
-                                                   CD_MASK_PROP_COLOR | CD_MASK_PROP_BOOL;
+                                                   CD_MASK_PROP_COLOR | CD_MASK_PROP_BOOL |
+                                                   CD_MASK_PROP_INT8;
 
  public:
   ReadAttributeLookup try_get_for_read(const GeometryComponent &component,
@@ -1442,8 +1305,8 @@ class DynamicPointAttributeProvider final : public DynamicAttributesProvider {
 
   bool try_create(GeometryComponent &component,
                   const AttributeIDRef &attribute_id,
-                  const AttributeDomain domain,
-                  const CustomDataType data_type,
+                  const eAttrDomain domain,
+                  const eCustomDataType data_type,
                   const AttributeInit &initializer) const final
   {
     BLI_assert(this->type_is_supported(data_type));
@@ -1472,12 +1335,12 @@ class DynamicPointAttributeProvider final : public DynamicAttributesProvider {
     return true;
   }
 
-  void foreach_domain(const FunctionRef<void(AttributeDomain)> callback) const final
+  void foreach_domain(const FunctionRef<void(eAttrDomain)> callback) const final
   {
     callback(ATTR_DOMAIN_POINT);
   }
 
-  bool type_is_supported(CustomDataType data_type) const
+  bool type_is_supported(eCustomDataType data_type) const
   {
     return ((1ULL << data_type) & supported_types_mask) != 0;
   }
@@ -1569,7 +1432,8 @@ static ComponentAttributeProviders create_attribute_providers_for_curve()
 
 }  // namespace blender::bke
 
-const blender::bke::ComponentAttributeProviders *CurveComponent::get_attribute_providers() const
+const blender::bke::ComponentAttributeProviders *CurveComponentLegacy::get_attribute_providers()
+    const
 {
   static blender::bke::ComponentAttributeProviders providers =
       blender::bke::create_attribute_providers_for_curve();

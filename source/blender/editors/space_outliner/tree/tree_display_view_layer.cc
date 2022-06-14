@@ -55,6 +55,11 @@ TreeDisplayViewLayer::TreeDisplayViewLayer(SpaceOutliner &space_outliner)
 {
 }
 
+bool TreeDisplayViewLayer::supportsModeColumn() const
+{
+  return true;
+}
+
 ListBase TreeDisplayViewLayer::buildTree(const TreeSourceData &source_data)
 {
   ListBase tree = {nullptr};
@@ -153,15 +158,6 @@ void TreeDisplayViewLayer::add_layer_collections_recursive(ListBase &tree,
     add_layer_collections_recursive(ten->subtree, lc->layer_collections, *ten);
     if (!exclude && show_objects_) {
       add_layer_collection_objects(ten->subtree, *lc, *ten);
-    }
-
-    const bool lib_overrides_visible = !exclude && (!SUPPORT_FILTER_OUTLINER(&space_outliner_) ||
-                                                    ((space_outliner_.filter &
-                                                      SO_FILTER_NO_LIB_OVERRIDE) == 0));
-
-    if (lib_overrides_visible && ID_IS_OVERRIDE_LIBRARY_REAL(&lc->collection->id)) {
-      outliner_add_element(
-          &space_outliner_, &ten->subtree, &lc->collection->id, ten, TSE_LIBRARY_OVERRIDE_BASE, 0);
     }
   }
 }
@@ -275,14 +271,14 @@ void ObjectsChildrenBuilder::make_object_parent_hierarchy_collections()
 
       if (!found) {
         /* We add the child in the tree even if it is not in the collection.
-         * We deliberately clear its sub-tree though, to make it less prominent. */
+         * We don't expand its sub-tree though, to make it less prominent. */
         TreeElement *child_ob_tree_element = outliner_add_element(&outliner_,
                                                                   &parent_ob_tree_element->subtree,
                                                                   child,
                                                                   parent_ob_tree_element,
                                                                   TSE_SOME_ID,
-                                                                  0);
-        outliner_free_tree(&child_ob_tree_element->subtree);
+                                                                  0,
+                                                                  false);
         child_ob_tree_element->flag |= TE_CHILD_NOT_IN_COLLECTION;
         child_ob_tree_elements.append(child_ob_tree_element);
       }

@@ -24,12 +24,9 @@
 #include "UI_view2d.h"
 
 #include "transform.h"
-#include "transform_snap.h"
-
 #include "transform_convert.h"
-#include "transform_snap.h"
-
 #include "transform_mode.h"
+#include "transform_snap.h"
 
 typedef struct TransDataGraph {
   float unit_scale;
@@ -161,7 +158,7 @@ static void graph_bezt_get_transform_selection(const TransInfo *t,
   bool left = use_handle ? ((bezt->f1 & SELECT) != 0) : key;
   bool right = use_handle ? ((bezt->f3 & SELECT) != 0) : key;
 
-  if (use_handle && t->is_launch_event_tweak) {
+  if (use_handle && t->is_launch_event_drag) {
     if (sipo->runtime.flag & SIPO_RUNTIME_FLAG_TWEAK_HANDLES_LEFT) {
       key = right = false;
     }

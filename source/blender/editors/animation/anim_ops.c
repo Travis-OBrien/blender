@@ -38,7 +38,6 @@
 #include "SEQ_iterator.h"
 #include "SEQ_sequencer.h"
 #include "SEQ_time.h"
-#include "SEQ_transform.h"
 
 #include "anim_intern.h"
 
@@ -112,9 +111,9 @@ static int seq_frame_apply_snap(bContext *C, Scene *scene, const int timeline_fr
   Sequence *seq;
   SEQ_ITERATOR_FOREACH (seq, strips) {
     seq_frame_snap_update_best(
-        SEQ_transform_get_left_handle_frame(seq), timeline_frame, &best_frame, &best_distance);
+        SEQ_time_left_handle_frame_get(seq), timeline_frame, &best_frame, &best_distance);
     seq_frame_snap_update_best(
-        SEQ_transform_get_right_handle_frame(seq), timeline_frame, &best_frame, &best_distance);
+        SEQ_time_right_handle_frame_get(seq), timeline_frame, &best_frame, &best_distance);
   }
   SEQ_collection_free(strips);
 
@@ -233,7 +232,7 @@ static bool use_sequencer_snapping(bContext *C)
 
   Scene *scene = CTX_data_scene(C);
   short snap_flag = SEQ_tool_settings_snap_flag_get(scene);
-  return (scene->toolsettings->snap_flag & SCE_SNAP_SEQ) &&
+  return (scene->toolsettings->snap_flag_seq & SCE_SNAP) &&
          (snap_flag & SEQ_SNAP_CURRENT_FRAME_TO_STRIPS);
 }
 

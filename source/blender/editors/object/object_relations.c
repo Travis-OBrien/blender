@@ -169,7 +169,7 @@ static int vertex_parent_set_exec(bContext *C, wmOperator *op)
       }
     }
   }
-  else if (ELEM(obedit->type, OB_SURF, OB_CURVE)) {
+  else if (ELEM(obedit->type, OB_SURF, OB_CURVES_LEGACY)) {
     ListBase *editnurb = object_editcurve_get(obedit);
 
     for (Nurb *nu = editnurb->first; nu != NULL; nu = nu->next) {
@@ -341,7 +341,7 @@ EnumPropertyItem prop_clear_parent_types[] = {
 /* Helper for ED_object_parent_clear() - Remove deform-modifiers associated with parent */
 static void object_remove_parent_deform_modifiers(Object *ob, const Object *par)
 {
-  if (ELEM(par->type, OB_ARMATURE, OB_LATTICE, OB_CURVE)) {
+  if (ELEM(par->type, OB_ARMATURE, OB_LATTICE, OB_CURVES_LEGACY)) {
     ModifierData *md, *mdn;
 
     /* assume that we only need to remove the first instance of matching deform modifier here */
@@ -363,7 +363,7 @@ static void object_remove_parent_deform_modifiers(Object *ob, const Object *par)
           free = true;
         }
       }
-      else if ((md->type == eModifierType_Curve) && (par->type == OB_CURVE)) {
+      else if ((md->type == eModifierType_Curve) && (par->type == OB_CURVES_LEGACY)) {
         CurveModifierData *cmd = (CurveModifierData *)md;
         if (cmd->object == par) {
           free = true;
@@ -531,7 +531,7 @@ bool ED_object_parent_set(ReportList *reports,
   switch (partype) {
     case PAR_FOLLOW:
     case PAR_PATH_CONST: {
-      if (par->type != OB_CURVE) {
+      if (par->type != OB_CURVES_LEGACY) {
         return false;
       }
       Curve *cu = par->data;
@@ -626,7 +626,7 @@ bool ED_object_parent_set(ReportList *reports,
        */
       /* XXX currently this should only happen for meshes, curves, surfaces,
        * and lattices - this stuff isn't available for meta-balls yet. */
-      if (ELEM(ob->type, OB_MESH, OB_CURVE, OB_SURF, OB_FONT, OB_LATTICE)) {
+      if (ELEM(ob->type, OB_MESH, OB_CURVES_LEGACY, OB_SURF, OB_FONT, OB_LATTICE)) {
         ModifierData *md;
 
         switch (partype) {
@@ -936,8 +936,19 @@ static int parent_set_invoke_menu(bContext *C, wmOperatorType *ot)
   RNA_boolean_set(&opptr, "keep_transform", true);
 #endif
 
-  uiItemO(
-      layout, IFACE_("Object (Without Inverse)"), ICON_NONE, "OBJECT_OT_parent_no_inverse_set");
+  uiItemBooleanO(layout,
+                 IFACE_("Object (Without Inverse)"),
+                 ICON_NONE,
+                 "OBJECT_OT_parent_no_inverse_set",
+                 "keep_transform",
+                 0);
+
+  uiItemBooleanO(layout,
+                 IFACE_("Object (Keep Transform Without Inverse)"),
+                 ICON_NONE,
+                 "OBJECT_OT_parent_no_inverse_set",
+                 "keep_transform",
+                 1);
 
   struct {
     bool mesh, gpencil;
@@ -968,7 +979,7 @@ static int parent_set_invoke_menu(bContext *C, wmOperatorType *ot)
     uiItemEnumO_ptr(layout, ot, NULL, 0, "type", PAR_BONE);
     uiItemEnumO_ptr(layout, ot, NULL, 0, "type", PAR_BONE_RELATIVE);
   }
-  else if (parent->type == OB_CURVE) {
+  else if (parent->type == OB_CURVES_LEGACY) {
     uiItemEnumO_ptr(layout, ot, NULL, 0, "type", PAR_CURVE);
     uiItemEnumO_ptr(layout, ot, NULL, 0, "type", PAR_FOLLOW);
     uiItemEnumO_ptr(layout, ot, NULL, 0, "type", PAR_PATH_CONST);
@@ -1055,6 +1066,8 @@ static int parent_noinv_set_exec(bContext *C, wmOperator *op)
   Main *bmain = CTX_data_main(C);
   Object *par = ED_object_active_context(C);
 
+  const bool keep_transform = RNA_boolean_get(op->ptr, "keep_transform");
+
   DEG_id_tag_update(&par->id, ID_RECALC_TRANSFORM);
 
   /* context iterator */
@@ -1064,16 +1077,21 @@ static int parent_noinv_set_exec(bContext *C, wmOperator *op)
         BKE_report(op->reports, RPT_ERROR, "Loop in parents");
       }
       else {
-        /* clear inverse matrix and also the object location */
-        unit_m4(ob->parentinv);
-        memset(ob->loc, 0, sizeof(float[3]));
-
         /* set recalc flags */
         DEG_id_tag_update(&ob->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY);
 
         /* set parenting type for object - object only... */
         ob->parent = par;
         ob->partype = PAROBJECT; /* NOTE: DNA define, not operator property. */
+
+        if (keep_transform) {
+          BKE_object_apply_parent_inverse(ob);
+          continue;
+        }
+
+        /* clear inverse matrix and also the object location */
+        unit_m4(ob->parentinv);
+        memset(ob->loc, 0, sizeof(float[3]));
       }
     }
   }
@@ -1100,6 +1118,12 @@ void OBJECT_OT_parent_no_inverse_set(wmOperatorType *ot)
 
   /* flags */
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+  RNA_def_boolean(ot->srna,
+                  "keep_transform",
+                  false,
+                  "Keep Transform",
+                  "Preserve the world transform throughout parenting");
 }
 
 /** \} */
@@ -1350,7 +1374,7 @@ static int make_links_scene_exec(bContext *C, wmOperator *op)
     return OPERATOR_CANCELLED;
   }
 
-  if (ID_IS_LINKED(scene_to)) {
+  if (!BKE_id_is_editable(bmain, &scene_to->id)) {
     BKE_report(op->reports, RPT_ERROR, "Cannot link objects into a linked scene");
     return OPERATOR_CANCELLED;
   }
@@ -1481,7 +1505,7 @@ static int make_links_data_exec(bContext *C, wmOperator *op)
           case MAKE_LINKS_ANIMDATA:
             BKE_animdata_copy_id(bmain, (ID *)ob_dst, (ID *)ob_src, 0);
             if (ob_dst->data && ob_src->data) {
-              if (ID_IS_LINKED(obdata_id)) {
+              if (!BKE_id_is_editable(bmain, obdata_id)) {
                 is_lib = true;
                 break;
               }
@@ -1525,7 +1549,7 @@ static int make_links_data_exec(bContext *C, wmOperator *op)
             Curve *cu_src = ob_src->data;
             Curve *cu_dst = ob_dst->data;
 
-            if (ID_IS_LINKED(obdata_id)) {
+            if (!BKE_id_is_editable(bmain, obdata_id)) {
               is_lib = true;
               break;
             }
@@ -1629,7 +1653,7 @@ void OBJECT_OT_make_links_data(wmOperatorType *ot)
        "Link Instance Collection",
        "Replace assigned Collection Instance"},
       {MAKE_LINKS_FONTS, "FONTS", 0, "Link Fonts to Text", "Replace Text object Fonts"},
-      {0, "", 0, NULL, NULL},
+      RNA_ENUM_ITEM_SEPR,
       {MAKE_LINKS_MODIFIERS, "MODIFIERS", 0, "Copy Modifiers", "Replace Modifiers"},
       {MAKE_LINKS_SHADERFX,
        "EFFECTS",
@@ -1792,7 +1816,7 @@ static void single_obdata_users(
   ID *id;
 
   FOREACH_OBJECT_FLAG_BEGIN (scene, view_layer, v3d, flag, ob) {
-    if (!ID_IS_LINKED(ob)) {
+    if (BKE_id_is_editable(bmain, &ob->id)) {
       id = ob->data;
       if (single_data_needs_duplication(id)) {
         DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
@@ -1820,7 +1844,7 @@ static void single_obdata_users(
                 ob->data,
                 BKE_id_copy_ex(bmain, ob->data, NULL, LIB_ID_COPY_DEFAULT | LIB_ID_COPY_ACTIONS));
             break;
-          case OB_CURVE:
+          case OB_CURVES_LEGACY:
           case OB_SURF:
           case OB_FONT:
             ob->data = cu = ID_NEW_SET(
@@ -1893,11 +1917,24 @@ static void single_obdata_users(
   }
 }
 
+void ED_object_single_obdata_user(Main *bmain, Scene *scene, Object *ob)
+{
+  FOREACH_SCENE_OBJECT_BEGIN (scene, ob_iter) {
+    ob_iter->flag &= ~OB_DONE;
+  }
+  FOREACH_SCENE_OBJECT_END;
+
+  /* Tag only the one object. */
+  ob->flag |= OB_DONE;
+
+  single_obdata_users(bmain, scene, NULL, NULL, OB_DONE);
+}
+
 static void single_object_action_users(
     Main *bmain, Scene *scene, ViewLayer *view_layer, View3D *v3d, const int flag)
 {
   FOREACH_OBJECT_FLAG_BEGIN (scene, view_layer, v3d, flag, ob) {
-    if (!ID_IS_LINKED(ob)) {
+    if (BKE_id_is_editable(bmain, &ob->id)) {
       AnimData *adt = BKE_animdata_from_id(&ob->id);
       if (adt == NULL) {
         continue;
@@ -1917,7 +1954,7 @@ static void single_objectdata_action_users(
     Main *bmain, Scene *scene, ViewLayer *view_layer, View3D *v3d, const int flag)
 {
   FOREACH_OBJECT_FLAG_BEGIN (scene, view_layer, v3d, flag, ob) {
-    if (!ID_IS_LINKED(ob) && ob->data != NULL) {
+    if (BKE_id_is_editable(bmain, &ob->id) && ob->data != NULL) {
       ID *id_obdata = (ID *)ob->data;
       AnimData *adt = BKE_animdata_from_id(id_obdata);
       if (adt == NULL) {
@@ -1927,7 +1964,7 @@ static void single_objectdata_action_users(
       ID *id_act = (ID *)adt->action;
       if (single_data_needs_duplication(id_act)) {
         DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
-        BKE_animdata_duplicate_id_action(bmain, &ob->id, USER_DUP_ACT | USER_DUP_LINKED_ID);
+        BKE_animdata_duplicate_id_action(bmain, id_obdata, USER_DUP_ACT | USER_DUP_LINKED_ID);
       }
     }
   }
@@ -1941,7 +1978,7 @@ static void single_mat_users(
   int a;
 
   FOREACH_OBJECT_FLAG_BEGIN (scene, view_layer, v3d, flag, ob) {
-    if (!ID_IS_LINKED(ob)) {
+    if (BKE_id_is_editable(bmain, &ob->id)) {
       for (a = 1; a <= ob->totcol; a++) {
         ma = BKE_object_material_get(ob, (short)a);
         if (single_data_needs_duplication(&ma->id)) {
@@ -2221,49 +2258,6 @@ static bool make_override_library_object_overridable_check(Main *bmain, Object *
   return false;
 }
 
-/* Set the object to override. */
-static int make_override_library_invoke(bContext *C, wmOperator *op, const wmEvent *event)
-{
-  Main *bmain = CTX_data_main(C);
-  Scene *scene = CTX_data_scene(C);
-  Object *obact = ED_object_active_context(C);
-
-  /* Sanity checks. */
-  if (!scene || ID_IS_LINKED(scene) || !obact) {
-    return OPERATOR_CANCELLED;
-  }
-
-  if ((!ID_IS_LINKED(obact) && obact->instance_collection != NULL &&
-       ID_IS_OVERRIDABLE_LIBRARY(obact->instance_collection)) ||
-      make_override_library_object_overridable_check(bmain, obact)) {
-    uiPopupMenu *pup = UI_popup_menu_begin(C, IFACE_("OK?"), ICON_QUESTION);
-    uiLayout *layout = UI_popup_menu_layout(pup);
-
-    /* Create operator menu item with relevant properties filled in. */
-    PointerRNA opptr_dummy;
-    uiItemFullO_ptr(
-        layout, op->type, op->type->name, ICON_NONE, NULL, WM_OP_EXEC_REGION_WIN, 0, &opptr_dummy);
-
-    /* Present the menu and be done... */
-    UI_popup_menu_end(C, pup);
-
-    /* This invoke just calls another instance of this operator... */
-    return OPERATOR_INTERFACE;
-  }
-
-  if (ID_IS_LINKED(obact)) {
-    /* Show menu with list of directly linked collections containing the active object. */
-    WM_enum_search_invoke(C, op, event);
-    return OPERATOR_CANCELLED;
-  }
-
-  /* Error.. cannot continue. */
-  BKE_report(op->reports,
-             RPT_ERROR,
-             "Can only make library override for a referenced object or collection");
-  return OPERATOR_CANCELLED;
-}
-
 static int make_override_library_exec(bContext *C, wmOperator *op)
 {
   Main *bmain = CTX_data_main(C);
@@ -2272,6 +2266,14 @@ static int make_override_library_exec(bContext *C, wmOperator *op)
   Object *obact = CTX_data_active_object(C);
   ID *id_root = NULL;
   bool is_override_instancing_object = false;
+
+  const bool do_fully_editable = RNA_boolean_get(op->ptr, "do_fully_editable");
+
+  GSet *user_overrides_objects_uids = do_fully_editable ? NULL :
+                                                          BLI_gset_new(BLI_ghashutil_inthash_p,
+                                                                       BLI_ghashutil_intcmp,
+                                                                       __func__);
+  bool user_overrides_from_selected_objects = false;
 
   if (!ID_IS_LINKED(obact) && obact->instance_collection != NULL &&
       ID_IS_LINKED(obact->instance_collection)) {
@@ -2285,6 +2287,7 @@ static int make_override_library_exec(bContext *C, wmOperator *op)
 
     id_root = &obact->instance_collection->id;
     is_override_instancing_object = true;
+    user_overrides_from_selected_objects = false;
   }
   else if (!make_override_library_object_overridable_check(bmain, obact)) {
     const int i = RNA_property_enum_get(op->ptr, op->type->prop);
@@ -2309,16 +2312,65 @@ static int make_override_library_exec(bContext *C, wmOperator *op)
       return OPERATOR_CANCELLED;
     }
     id_root = &collection->id;
+    user_overrides_from_selected_objects = true;
   }
   /* Else, poll func ensures us that ID_IS_LINKED(obact) is true. */
   else {
     id_root = &obact->id;
+    user_overrides_from_selected_objects = true;
+  }
+
+  if (do_fully_editable) {
+    /* Pass. */
+  }
+  else if (user_overrides_from_selected_objects) {
+    /* Only selected objects can be 'user overrides'. */
+    FOREACH_SELECTED_OBJECT_BEGIN (view_layer, CTX_wm_view3d(C), ob_iter) {
+      BLI_gset_add(user_overrides_objects_uids, POINTER_FROM_UINT(ob_iter->id.session_uuid));
+    }
+    FOREACH_SELECTED_OBJECT_END;
+  }
+  else {
+    /* Only armatures inside the root collection (and their children) can be 'user overrides'. */
+    FOREACH_COLLECTION_OBJECT_RECURSIVE_BEGIN ((Collection *)id_root, ob_iter) {
+      if (ob_iter->type == OB_ARMATURE) {
+        BLI_gset_add(user_overrides_objects_uids, POINTER_FROM_UINT(ob_iter->id.session_uuid));
+      }
+    }
+    FOREACH_COLLECTION_OBJECT_RECURSIVE_END;
   }
 
   BKE_main_id_tag_all(bmain, LIB_TAG_DOIT, false);
 
-  const bool success = BKE_lib_override_library_create(
-      bmain, scene, view_layer, NULL, id_root, &obact->id, NULL);
+  ID *id_root_override;
+  const bool success = BKE_lib_override_library_create(bmain,
+                                                       scene,
+                                                       view_layer,
+                                                       NULL,
+                                                       id_root,
+                                                       id_root,
+                                                       &obact->id,
+                                                       &id_root_override,
+                                                       do_fully_editable);
+
+  if (!do_fully_editable) {
+    /* Define liboverrides from selected/validated objects as user defined. */
+    ID *id_hierarchy_root_override = id_root_override->override_library->hierarchy_root;
+    ID *id_iter;
+    FOREACH_MAIN_ID_BEGIN (bmain, id_iter) {
+      if (ID_IS_LINKED(id_iter) || !ID_IS_OVERRIDE_LIBRARY_REAL(id_iter) ||
+          id_iter->override_library->hierarchy_root != id_hierarchy_root_override) {
+        continue;
+      }
+      if (BLI_gset_haskey(user_overrides_objects_uids,
+                          POINTER_FROM_UINT(id_iter->override_library->reference->session_uuid))) {
+        id_iter->override_library->flag &= ~IDOVERRIDE_LIBRARY_FLAG_SYSTEM_DEFINED;
+      }
+    }
+    FOREACH_MAIN_ID_END;
+
+    BLI_gset_free(user_overrides_objects_uids, NULL);
+  }
 
   /* Remove the instance empty from this scene, the items now have an overridden collection
    * instead. */
@@ -2330,6 +2382,37 @@ static int make_override_library_exec(bContext *C, wmOperator *op)
   WM_event_add_notifier(C, NC_WINDOW, NULL);
 
   return success ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
+}
+
+/* Set the object to override. */
+static int make_override_library_invoke(bContext *C, wmOperator *op, const wmEvent *event)
+{
+  Main *bmain = CTX_data_main(C);
+  Scene *scene = CTX_data_scene(C);
+  Object *obact = ED_object_active_context(C);
+
+  /* Sanity checks. */
+  if (!scene || ID_IS_LINKED(scene) || !obact) {
+    return OPERATOR_CANCELLED;
+  }
+
+  if ((!ID_IS_LINKED(obact) && obact->instance_collection != NULL &&
+       ID_IS_OVERRIDABLE_LIBRARY(obact->instance_collection)) ||
+      make_override_library_object_overridable_check(bmain, obact)) {
+    return make_override_library_exec(C, op);
+  }
+
+  if (ID_IS_LINKED(obact)) {
+    /* Show menu with list of directly linked collections containing the active object. */
+    WM_enum_search_invoke(C, op, event);
+    return OPERATOR_CANCELLED;
+  }
+
+  /* Error.. cannot continue. */
+  BKE_report(op->reports,
+             RPT_ERROR,
+             "Can only make library override for a referenced object or collection");
+  return OPERATOR_CANCELLED;
 }
 
 static bool make_override_library_poll(bContext *C)
@@ -2401,6 +2484,13 @@ void OBJECT_OT_make_override_library(wmOperatorType *ot)
   RNA_def_enum_funcs(prop, make_override_collections_of_linked_object_itemf);
   RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
   ot->prop = prop;
+
+  prop = RNA_def_boolean(ot->srna,
+                         "do_fully_editable",
+                         false,
+                         "Create Fully Editable",
+                         "Make all created override data-blocks fully editable");
+  RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
 }
 
 /** \} */
@@ -2515,9 +2605,7 @@ void OBJECT_OT_make_single_user(wmOperatorType *ot)
 /** \name Drop Named Material on Object Operator
  * \{ */
 
-char *ED_object_ot_drop_named_material_tooltip(bContext *C,
-                                               PointerRNA *properties,
-                                               const int mval[2])
+char *ED_object_ot_drop_named_material_tooltip(bContext *C, const char *name, const int mval[2])
 {
   int mat_slot = 0;
   Object *ob = ED_view3d_give_material_slot_under_cursor(C, mval, &mat_slot);
@@ -2525,9 +2613,6 @@ char *ED_object_ot_drop_named_material_tooltip(bContext *C,
     return BLI_strdup("");
   }
   mat_slot = max_ii(mat_slot, 1);
-
-  char name[MAX_ID_NAME - 2];
-  RNA_string_get(properties, "name", name);
 
   Material *prev_mat = BKE_object_material_get(ob, mat_slot);
 
@@ -2550,11 +2635,9 @@ static int drop_named_material_invoke(bContext *C, wmOperator *op, const wmEvent
   Object *ob = ED_view3d_give_material_slot_under_cursor(C, event->mval, &mat_slot);
   mat_slot = max_ii(mat_slot, 1);
 
-  Material *ma;
-  char name[MAX_ID_NAME - 2];
+  Material *ma = (Material *)WM_operator_properties_id_lookup_from_name_or_session_uuid(
+      bmain, op->ptr, ID_MA);
 
-  RNA_string_get(op->ptr, "name", name);
-  ma = (Material *)BKE_libblock_find_name(bmain, ID_MA, name);
   if (ob == NULL || ma == NULL) {
     return OPERATOR_CANCELLED;
   }
@@ -2584,7 +2667,7 @@ void OBJECT_OT_drop_named_material(wmOperatorType *ot)
   ot->flag = OPTYPE_UNDO | OPTYPE_INTERNAL;
 
   /* properties */
-  RNA_def_string(ot->srna, "name", "Material", MAX_ID_NAME - 2, "Name", "Material name to assign");
+  WM_operator_properties_id_lookup(ot, true);
 }
 
 /** \} */

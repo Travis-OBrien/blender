@@ -756,7 +756,16 @@ static int BPy_IDGroup_Map_SetItem(BPy_IDProperty *self, PyObject *key, PyObject
 
 static PyObject *BPy_IDGroup_iter(BPy_IDProperty *self)
 {
-  return BPy_IDGroup_ViewKeys_CreatePyObject(self);
+  PyObject *iterable = BPy_IDGroup_ViewKeys_CreatePyObject(self);
+  PyObject *ret;
+  if (iterable) {
+    ret = PyObject_GetIter(iterable);
+    Py_DECREF(iterable);
+  }
+  else {
+    ret = NULL;
+  }
+  return ret;
 }
 
 PyObject *BPy_IDGroup_MapDataToPy(IDProperty *prop)
@@ -1270,9 +1279,8 @@ static PyObject *BPy_IDGroup_pop(BPy_IDProperty *self, PyObject *args)
 
   pyform = BPy_IDGroup_MapDataToPy(idprop);
   if (pyform == NULL) {
-    /* ok something bad happened with the #PyObject,
-     * so don't remove the prop from the group.  if `pyform is
-     * NULL, then it already should have raised an exception. */
+    /* Ok something bad happened with the #PyObject, so don't remove the prop from the group.
+     * if `pyform` is NULL, then it already should have raised an exception. */
     return NULL;
   }
 

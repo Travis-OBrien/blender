@@ -307,6 +307,7 @@ static GHOST_TKey convertKey(int rawCode, unichar recvChar, UInt16 keyAction)
           case ']':
             return GHOST_kKeyRightBracket;
           case '`':
+          case '<': /* The position of '`' is equivalent to this symbol in the French layout. */
             return GHOST_kKeyAccentGrave;
           default:
             return GHOST_kKeyUnknown;
@@ -771,6 +772,20 @@ GHOST_TSuccess GHOST_SystemCocoa::disposeContext(GHOST_IContext *context)
   return GHOST_kSuccess;
 }
 
+GHOST_IWindow *GHOST_SystemCocoa::getWindowUnderCursor(int32_t x, int32_t y)
+{
+  NSPoint scr_co = NSMakePoint(x, y);
+
+  int windowNumberAtPoint = [NSWindow windowNumberAtPoint:scr_co belowWindowWithWindowNumber:0];
+  NSWindow *nswindow = [NSApp windowWithWindowNumber:windowNumberAtPoint];
+
+  if (nswindow == nil) {
+    return nil;
+  }
+
+  return m_windowManager->getWindowAssociatedWithOSWindow((void *)nswindow);
+}
+
 /**
  * \note : returns coordinates in Cocoa screen coordinates
  */
@@ -952,7 +967,7 @@ bool GHOST_SystemCocoa::processEvents(bool waitForEvent)
   return anyProcessed;
 }
 
-// Note: called from NSApplication delegate
+/* NOTE: called from #NSApplication delegate. */
 GHOST_TSuccess GHOST_SystemCocoa::handleApplicationBecomeActiveEvent()
 {
   for (GHOST_IWindow *iwindow : m_windowManager->getWindows()) {
@@ -1031,12 +1046,10 @@ void GHOST_SystemCocoa::notifyExternalEventProcessed()
   m_outsideLoopEventProcessed = true;
 }
 
-// Note: called from NSWindow delegate
+/* NOTE: called from #NSWindow delegate. */
 GHOST_TSuccess GHOST_SystemCocoa::handleWindowEvent(GHOST_TEventType eventType,
                                                     GHOST_WindowCocoa *window)
 {
-  NSArray *windowsList;
-  windowsList = [NSApp orderedWindows];
   if (!validWindow(window)) {
     return GHOST_kFailure;
   }
@@ -1095,7 +1108,7 @@ GHOST_TSuccess GHOST_SystemCocoa::handleWindowEvent(GHOST_TEventType eventType,
   return GHOST_kSuccess;
 }
 
-// Note: called from NSWindow subclass
+/* NOTE: called from #NSWindow subclass. */
 GHOST_TSuccess GHOST_SystemCocoa::handleDraggingEvent(GHOST_TEventType eventType,
                                                       GHOST_TDragnDropTypes draggedObjectType,
                                                       GHOST_WindowCocoa *window,

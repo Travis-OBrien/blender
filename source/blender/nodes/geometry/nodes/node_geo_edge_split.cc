@@ -25,6 +25,9 @@ static Mesh *mesh_edge_split(const Mesh &mesh, const IndexMask selection)
   BMesh *bm = BM_mesh_create(&allocsize, &bmesh_create_params);
 
   BMeshFromMeshParams bmesh_from_mesh_params{};
+  bmesh_from_mesh_params.cd_mask_extra.vmask = CD_MASK_ORIGINDEX;
+  bmesh_from_mesh_params.cd_mask_extra.emask = CD_MASK_ORIGINDEX;
+  bmesh_from_mesh_params.cd_mask_extra.pmask = CD_MASK_ORIGINDEX;
   BM_mesh_bm_from_me(bm, &mesh, &bmesh_from_mesh_params);
 
   BM_mesh_elem_table_ensure(bm, BM_EDGE);
@@ -37,8 +40,6 @@ static Mesh *mesh_edge_split(const Mesh &mesh, const IndexMask selection)
 
   Mesh *result = BKE_mesh_from_bmesh_for_eval_nomain(bm, nullptr, &mesh);
   BM_mesh_free(bm);
-
-  BKE_mesh_normals_tag_dirty(result);
 
   return result;
 }
@@ -56,8 +57,8 @@ static void node_geo_exec(GeoNodeExecParams params)
 
     const MeshComponent &mesh_component = *geometry_set.get_component_for_read<MeshComponent>();
     GeometryComponentFieldContext field_context{mesh_component, ATTR_DOMAIN_EDGE};
-    const int domain_size = mesh_component.attribute_domain_size(ATTR_DOMAIN_EDGE);
-    fn::FieldEvaluator selection_evaluator{field_context, domain_size};
+    const int domain_num = mesh_component.attribute_domain_num(ATTR_DOMAIN_EDGE);
+    fn::FieldEvaluator selection_evaluator{field_context, domain_num};
     selection_evaluator.add(selection_field);
     selection_evaluator.evaluate();
     const IndexMask selection = selection_evaluator.get_evaluated_as_mask(0);

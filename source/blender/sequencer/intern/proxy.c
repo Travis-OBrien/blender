@@ -43,6 +43,7 @@
 #include "SEQ_relations.h"
 #include "SEQ_render.h"
 #include "SEQ_sequencer.h"
+#include "SEQ_time.h"
 
 #include "multiview.h"
 #include "proxy.h"
@@ -523,8 +524,8 @@ void SEQ_proxy_rebuild(SeqIndexBuildContext *context,
   SeqRenderState state;
   seq_render_state_init(&state);
 
-  for (timeline_frame = seq->startdisp + seq->startstill;
-       timeline_frame < seq->enddisp - seq->endstill;
+  for (timeline_frame = SEQ_time_left_handle_frame_get(seq);
+       timeline_frame < SEQ_time_right_handle_frame_get(seq);
        timeline_frame++) {
     if (context->size_flags & IMB_PROXY_25) {
       seq_proxy_build_frame(&render_context, &state, seq, timeline_frame, 25, overwrite);
@@ -539,26 +540,14 @@ void SEQ_proxy_rebuild(SeqIndexBuildContext *context,
       seq_proxy_build_frame(&render_context, &state, seq, timeline_frame, 100, overwrite);
     }
 
-    *progress = (float)(timeline_frame - seq->startdisp - seq->startstill) /
-                (seq->enddisp - seq->endstill - seq->startdisp - seq->startstill);
+    *progress = (float)(timeline_frame - SEQ_time_left_handle_frame_get(seq)) /
+                (SEQ_time_right_handle_frame_get(seq) - SEQ_time_left_handle_frame_get(seq));
     *do_update = true;
 
     if (*stop || G.is_break) {
       break;
     }
   }
-}
-
-static bool seq_orig_free_anims(Sequence *seq_iter, void *data)
-{
-  SessionUUID orig_seq_uuid = ((SeqIndexBuildContext *)data)->orig_seq_uuid;
-
-  if (BLI_session_uuid_is_equal(&seq_iter->runtime.session_uuid, &orig_seq_uuid)) {
-    for (StripAnim *sanim = seq_iter->anims.first; sanim; sanim = sanim->next) {
-      IMB_close_anim_proxies(sanim->anim);
-    }
-  }
-  return true;
 }
 
 void SEQ_proxy_rebuild_finish(SeqIndexBuildContext *context, bool stop)
@@ -569,9 +558,6 @@ void SEQ_proxy_rebuild_finish(SeqIndexBuildContext *context, bool stop)
     for (sanim = context->seq->anims.first; sanim; sanim = sanim->next) {
       IMB_close_anim_proxies(sanim->anim);
     }
-
-    /* `context->seq_orig` may have been removed during building. */
-    SEQ_for_each_callback(&context->scene->ed->seqbase, seq_orig_free_anims, context);
 
     IMB_anim_index_rebuild_finish(context->index_context, stop);
   }

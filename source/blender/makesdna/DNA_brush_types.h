@@ -97,7 +97,7 @@ typedef struct BrushGpencilSettings {
   /** Simplify adaptive factor */
   float simplify_f;
 
-  /** Mix colorfactor */
+  /** Mix color-factor. */
   float vertex_factor;
   int vertex_mode;
 
@@ -136,6 +136,19 @@ typedef struct BrushGpencilSettings {
   /** Material. */
   struct Material *material;
 } BrushGpencilSettings;
+
+typedef struct BrushCurvesSculptSettings {
+  /** Number of curves added by the add brush. */
+  int add_amount;
+  /** Number of control points in new curves added by the add brush. */
+  int points_per_curve;
+  /* eBrushCurvesSculptFlag. */
+  uint32_t flag;
+  /** When shrinking curves, they shouldn't become shorter than this length. */
+  float minimum_length;
+  /** Length of newly added curves when it is not interpolated from other curves. */
+  float curve_length;
+} BrushCurvesSculptSettings;
 
 typedef struct Brush {
   ID id;
@@ -256,7 +269,9 @@ typedef struct Brush {
   char gpencil_sculpt_tool;
   /** Active grease pencil weight tool. */
   char gpencil_weight_tool;
-  char _pad1[6];
+  /** Active curves sculpt tool (#eBrushCurvesSculptTool). */
+  char curves_sculpt_tool;
+  char _pad1[5];
 
   float autosmooth_factor;
 
@@ -358,7 +373,7 @@ typedef struct Brush {
   float mask_stencil_dimension[2];
 
   struct BrushGpencilSettings *gpencil_settings;
-
+  struct BrushCurvesSculptSettings *curves_sculpt_settings;
 } Brush;
 
 /* Struct to hold palette colors for sorting. */

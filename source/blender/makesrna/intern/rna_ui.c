@@ -393,7 +393,14 @@ static StructRNA *rna_Panel_register(Main *bmain,
 
   if (parent) {
     pt->parent = parent;
-    BLI_addtail(&parent->children, BLI_genericNodeN(pt));
+    LinkData *pt_child_iter = parent->children.last;
+    for (; pt_child_iter; pt_child_iter = pt_child_iter->prev) {
+      PanelType *pt_child = pt_child_iter->data;
+      if (pt_child->order <= pt->order) {
+        break;
+      }
+    }
+    BLI_insertlinkafter(&parent->children, pt_child_iter, BLI_genericNodeN(pt));
   }
 
   {
@@ -549,7 +556,7 @@ static void uilist_filter_items(uiList *ui_list,
 
   parm = RNA_function_find_parameter(NULL, func, "filter_flags");
   ret_len = RNA_parameter_dynamic_length_get(&list, parm);
-  if (ret_len != len && ret_len != 0) {
+  if (!ELEM(ret_len, len, 0)) {
     printf("%s: Error, py func returned %d items in %s, %d or none were expected.\n",
            __func__,
            RNA_parameter_dynamic_length_get(&list, parm),
@@ -565,7 +572,7 @@ static void uilist_filter_items(uiList *ui_list,
 
   parm = RNA_function_find_parameter(NULL, func, "filter_neworder");
   ret_len = RNA_parameter_dynamic_length_get(&list, parm);
-  if (ret_len != len && ret_len != 0) {
+  if (!ELEM(ret_len, len, 0)) {
     printf("%s: Error, py func returned %d items in %s, %d or none were expected.\n",
            __func__,
            RNA_parameter_dynamic_length_get(&list, parm),

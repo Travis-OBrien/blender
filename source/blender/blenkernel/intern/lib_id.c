@@ -263,7 +263,6 @@ void id_us_ensure_real(ID *id)
                    "ID user count error: %s (from '%s')",
                    id->name,
                    id->lib ? id->lib->filepath_abs : "[Main]");
-        BLI_assert(0);
       }
       id->us = limit + 1;
       id->tag |= LIB_TAG_EXTRAUSER_SET;
@@ -312,7 +311,7 @@ void id_us_min(ID *id)
     const int limit = ID_FAKE_USERS(id);
 
     if (id->us <= limit) {
-      if (GS(id->name) != ID_IP) {
+      if (!ID_TYPE_IS_DEPRECATED(GS(id->name))) {
         /* Do not assert on deprecated ID types, we cannot really ensure that their ID refcounting
          * is valid... */
         CLOG_ERROR(&LOG,
@@ -321,7 +320,6 @@ void id_us_min(ID *id)
                    id->lib ? id->lib->filepath_abs : "[Main]",
                    id->us,
                    limit);
-        BLI_assert(0);
       }
       id->us = limit;
     }
@@ -592,11 +590,9 @@ static int id_copy_libmanagement_cb(LibraryIDLinkCallbackData *cb_data)
 
 bool BKE_id_copy_is_allowed(const ID *id)
 {
-#define LIB_ID_TYPES_NOCOPY \
-  ID_LI, ID_SCR, ID_WM, ID_WS, /* Not supported */ \
-      ID_IP                    /* Deprecated */
+#define LIB_ID_TYPES_NOCOPY ID_LI, ID_SCR, ID_WM, ID_WS /* Not supported */
 
-  return !ELEM(GS(id->name), LIB_ID_TYPES_NOCOPY);
+  return !ID_TYPE_IS_DEPRECATED(GS(id->name)) && !ELEM(GS(id->name), LIB_ID_TYPES_NOCOPY);
 
 #undef LIB_ID_TYPES_NOCOPY
 }
@@ -1875,7 +1871,7 @@ void BKE_library_make_local(Main *bmain,
   for (int a = set_listbasepointers(bmain, lbarray); a--;) {
     ID *id = lbarray[a]->first;
 
-    /* Do not explicitly make local non-linkable IDs (shapekeys, in fact),
+    /* Do not explicitly make local non-linkable IDs (shape-keys, in fact),
      * they are assumed to be handled by real data-blocks responsible of them. */
     const bool do_skip = (id && !BKE_idtype_idcode_is_linkable(GS(id->name)));
 
@@ -1902,8 +1898,8 @@ void BKE_library_make_local(Main *bmain,
        * to discover all your links are lost after appending).
        * Also, never ever make proxified objects local, would not make any sense. */
       /* Some more notes:
-       *   - Shapekeys are never tagged here (since they are not linkable).
-       *   - Nodetrees used in materials etc. have to be tagged manually,
+       *   - Shape-keys are never tagged here (since they are not linkable).
+       *   - Node-trees used in materials etc. have to be tagged manually,
        *     since they do not exist in Main (!).
        * This is ok-ish on 'make local' side of things
        * (since those are handled by their 'owner' IDs),
@@ -2163,6 +2159,11 @@ bool BKE_id_can_be_asset(const ID *id)
 {
   return !ID_IS_LINKED(id) && !ID_IS_OVERRIDE_LIBRARY(id) &&
          BKE_idtype_idcode_is_linkable(GS(id->name));
+}
+
+bool BKE_id_is_editable(const Main *bmain, const ID *id)
+{
+  return !(ID_IS_LINKED(id) || BKE_lib_override_library_is_system_defined(bmain, id));
 }
 
 /************************* Datablock order in UI **************************/

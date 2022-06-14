@@ -134,6 +134,7 @@ void ED_region_visibility_change_update(struct bContext *C,
                                         struct ScrArea *area,
                                         struct ARegion *region);
 /* screen_ops.c */
+
 /**
  * \note Assumes that \a region itself is not a split version from previous region.
  */
@@ -249,6 +250,12 @@ ScrArea *ED_area_offscreen_create(struct wmWindow *win, eSpace_Type space_type);
 void ED_area_offscreen_free(struct wmWindowManager *wm,
                             struct wmWindow *win,
                             struct ScrArea *area);
+
+/**
+ * Search all screens, even non-active or overlapping (multiple windows), return the most-likely
+ * area of interest. xy is relative to active window, like all similar functions.
+ */
+ScrArea *ED_area_find_under_cursor(const struct bContext *C, int spacetype, const int xy[2]);
 
 ScrArea *ED_screen_areas_iter_first(const struct wmWindow *win, const bScreen *screen);
 ScrArea *ED_screen_areas_iter_next(const bScreen *screen, const ScrArea *area);
@@ -589,7 +596,7 @@ bool ED_operator_posemode_context(struct bContext *C);
 bool ED_operator_posemode(struct bContext *C);
 bool ED_operator_posemode_local(struct bContext *C);
 bool ED_operator_mask(struct bContext *C);
-bool ED_operator_camera(struct bContext *C);
+bool ED_operator_camera_poll(struct bContext *C);
 
 /* screen_user_menu.c */
 
@@ -644,6 +651,7 @@ void ED_region_generic_tools_region_message_subscribe(
 int ED_region_generic_tools_region_snap_size(const struct ARegion *region, int size, int axis);
 
 /* area_query.c */
+
 bool ED_region_overlap_isect_x(const ARegion *region, int event_x);
 bool ED_region_overlap_isect_y(const ARegion *region, int event_y);
 bool ED_region_overlap_isect_xy(const ARegion *region, const int event_xy[2]);
@@ -658,7 +666,7 @@ bool ED_region_panel_category_gutter_calc_rect(const ARegion *region, rcti *r_re
 bool ED_region_panel_category_gutter_isect_xy(const ARegion *region, const int event_xy[2]);
 
 /**
- * \note: This may return true for multiple overlapping regions.
+ * \note This may return true for multiple overlapping regions.
  * If it matters, check overlapped regions first (#ARegion.overlap).
  */
 bool ED_region_contains_xy(const struct ARegion *region, const int event_xy[2]);

@@ -8,11 +8,9 @@
  */
 
 #include "DNA_object_types.h"
-#include "DNA_scene_types.h"
 
 #include "BLI_listbase.h"
 #include "BLI_rect.h"
-#include "DNA_scene_types.h"
 
 #include "MEM_guardedalloc.h"
 
@@ -54,7 +52,7 @@ typedef struct SnapCursorDataIntern {
 
   struct SnapObjectContext *snap_context_v3d;
   const Scene *scene;
-  short snap_elem_hidden;
+  eSnapMode snap_elem_hidden;
 
   float prevpoint_stack[3];
 
@@ -63,7 +61,7 @@ typedef struct SnapCursorDataIntern {
     int x;
     int y;
 #ifdef USE_SNAP_DETECT_FROM_KEYMAP_HACK
-    short shift, ctrl, alt, oskey;
+    uint8_t modifier;
 #endif
   } last_eventstate;
 
@@ -374,7 +372,7 @@ void ED_view3d_cursor_snap_draw_util(RegionView3D *rv3d,
                                      const float normal[3],
                                      const uchar color_line[4],
                                      const uchar color_point[4],
-                                     const short snap_elem_type)
+                                     const eSnapMode snap_elem_type)
 {
   if (!loc_prev && !loc_curr) {
     return;
@@ -478,10 +476,7 @@ static bool v3d_cursor_eventstate_has_changed(SnapCursorDataIntern *data_intern,
     }
 #ifdef USE_SNAP_DETECT_FROM_KEYMAP_HACK
     if (!(state && (state->flag & V3D_SNAPCURSOR_TOGGLE_ALWAYS_TRUE))) {
-      if ((event->ctrl != data_intern->last_eventstate.ctrl) ||
-          (event->shift != data_intern->last_eventstate.shift) ||
-          (event->alt != data_intern->last_eventstate.alt) ||
-          (event->oskey != data_intern->last_eventstate.oskey)) {
+      if (event->modifier != data_intern->last_eventstate.modifier) {
         return true;
       }
     }
@@ -507,19 +502,13 @@ static bool v3d_cursor_is_snap_invert(SnapCursorDataIntern *data_intern, const w
   }
 
   const wmEvent *event = wm->winactive->eventstate;
-  if ((event->ctrl == data_intern->last_eventstate.ctrl) &&
-      (event->shift == data_intern->last_eventstate.shift) &&
-      (event->alt == data_intern->last_eventstate.alt) &&
-      (event->oskey == data_intern->last_eventstate.oskey)) {
+  if (event->modifier == data_intern->last_eventstate.modifier) {
     /* Nothing has changed. */
     return data_intern->snap_data.is_snap_invert;
   }
 
   /* Save new eventstate. */
-  data_intern->last_eventstate.ctrl = event->ctrl;
-  data_intern->last_eventstate.shift = event->shift;
-  data_intern->last_eventstate.alt = event->alt;
-  data_intern->last_eventstate.oskey = event->oskey;
+  data_intern->last_eventstate.modifier = event->modifier;
 
   const int snap_on = data_intern->snap_on;
 
@@ -530,10 +519,10 @@ static bool v3d_cursor_is_snap_invert(SnapCursorDataIntern *data_intern, const w
     }
 
     if (kmi->propvalue == snap_on) {
-      if ((ELEM(kmi->type, EVT_LEFTCTRLKEY, EVT_RIGHTCTRLKEY) && event->ctrl) ||
-          (ELEM(kmi->type, EVT_LEFTSHIFTKEY, EVT_RIGHTSHIFTKEY) && event->shift) ||
-          (ELEM(kmi->type, EVT_LEFTALTKEY, EVT_RIGHTALTKEY) && event->alt) ||
-          ((kmi->type == EVT_OSKEY) && event->oskey)) {
+      if ((ELEM(kmi->type, EVT_LEFTCTRLKEY, EVT_RIGHTCTRLKEY) && (event->modifier & KM_CTRL)) ||
+          (ELEM(kmi->type, EVT_LEFTSHIFTKEY, EVT_RIGHTSHIFTKEY) && (event->modifier & KM_SHIFT)) ||
+          (ELEM(kmi->type, EVT_LEFTALTKEY, EVT_RIGHTALTKEY) && (event->modifier & KM_ALT)) ||
+          ((kmi->type == EVT_OSKEY) && (event->modifier & KM_OSKEY))) {
         return true;
       }
     }
@@ -548,9 +537,9 @@ static bool v3d_cursor_is_snap_invert(SnapCursorDataIntern *data_intern, const w
 /** \name Update
  * \{ */
 
-static short v3d_cursor_snap_elements(V3DSnapCursorState *snap_state, Scene *scene)
+static eSnapMode v3d_cursor_snap_elements(V3DSnapCursorState *snap_state, Scene *scene)
 {
-  short snap_elements = snap_state->snap_elem_force;
+  eSnapMode snap_elements = snap_state->snap_elem_force;
   if (!snap_elements) {
     return scene->toolsettings->snap_mode;
   }
@@ -570,6 +559,17 @@ static void v3d_cursor_snap_context_ensure(Scene *scene)
   }
 }
 
+static bool v3d_cursor_snap_calc_plane(void)
+{
+  /* If any of the states require the plane, calculate the `plane_omat`. */
+  LISTBASE_FOREACH (SnapStateIntern *, state, &g_data_intern.state_intern) {
+    if (state->snap_state.draw_plane || state->snap_state.draw_box) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static void v3d_cursor_snap_update(V3DSnapCursorState *state,
                                    const bContext *C,
                                    wmWindowManager *wm,
@@ -585,7 +585,7 @@ static void v3d_cursor_snap_update(V3DSnapCursorState *state,
   v3d_cursor_snap_context_ensure(scene);
 
   float co[3], no[3], face_nor[3], obmat[4][4], omat[3][3];
-  short snap_elem = 0;
+  eSnapMode snap_elem = SCE_SNAP_MODE_NONE;
   int snap_elem_index[3] = {-1, -1, -1};
   int index = -1;
 
@@ -594,10 +594,10 @@ static void v3d_cursor_snap_update(V3DSnapCursorState *state,
   zero_v3(face_nor);
   unit_m3(omat);
 
-  ushort snap_elements = v3d_cursor_snap_elements(state, scene);
-  data_intern->snap_elem_hidden = 0;
-  const bool draw_plane = state->draw_plane || state->draw_box;
-  if (draw_plane && !(snap_elements & SCE_SNAP_MODE_FACE)) {
+  eSnapMode snap_elements = v3d_cursor_snap_elements(state, scene);
+  data_intern->snap_elem_hidden = SCE_SNAP_MODE_NONE;
+  const bool calc_plane_omat = v3d_cursor_snap_calc_plane();
+  if (calc_plane_omat && !(snap_elements & SCE_SNAP_MODE_FACE)) {
     data_intern->snap_elem_hidden = SCE_SNAP_MODE_FACE;
     snap_elements |= SCE_SNAP_MODE_FACE;
   }
@@ -610,8 +610,8 @@ static void v3d_cursor_snap_update(V3DSnapCursorState *state,
     const ToolSettings *ts = scene->toolsettings;
     if (snap_data->is_snap_invert != !(ts->snap_flag & SCE_SNAP)) {
       snap_data->is_enabled = false;
-      if (!draw_plane) {
-        snap_data->snap_elem = 0;
+      if (!calc_plane_omat) {
+        snap_data->snap_elem = SCE_SNAP_MODE_NONE;
         return;
       }
       snap_elements = data_intern->snap_elem_hidden = SCE_SNAP_MODE_FACE;
@@ -619,8 +619,7 @@ static void v3d_cursor_snap_update(V3DSnapCursorState *state,
   }
 #endif
 
-  if (snap_elements & (SCE_SNAP_MODE_VERTEX | SCE_SNAP_MODE_EDGE | SCE_SNAP_MODE_FACE |
-                       SCE_SNAP_MODE_EDGE_MIDPOINT | SCE_SNAP_MODE_EDGE_PERPENDICULAR)) {
+  if (snap_elements & SCE_SNAP_MODE_GEOM) {
     float prev_co[3] = {0.0f};
     if (state->prevpoint) {
       copy_v3_v3(prev_co, state->prevpoint);
@@ -628,9 +627,6 @@ static void v3d_cursor_snap_update(V3DSnapCursorState *state,
     else {
       snap_elements &= ~SCE_SNAP_MODE_EDGE_PERPENDICULAR;
     }
-
-    eSnapSelect snap_select = (state->flag & V3D_SNAPCURSOR_SNAP_ONLY_ACTIVE) ? SNAP_ONLY_ACTIVE :
-                                                                                SNAP_ALL;
 
     eSnapEditType edit_mode_type = (state->flag & V3D_SNAPCURSOR_SNAP_EDIT_GEOM_FINAL) ?
                                        SNAP_GEOM_FINAL :
@@ -649,7 +645,7 @@ static void v3d_cursor_snap_update(V3DSnapCursorState *state,
         v3d,
         snap_elements,
         &(const struct SnapObjectParams){
-            .snap_select = snap_select,
+            .snap_target_select = SCE_SNAP_TARGET_ALL,
             .edit_mode_type = edit_mode_type,
             .use_occlusion_test = use_occlusion_test,
         },
@@ -668,9 +664,10 @@ static void v3d_cursor_snap_update(V3DSnapCursorState *state,
     face_nor[state->plane_axis] = 1.0f;
   }
 
-  if (draw_plane) {
+  if (calc_plane_omat) {
     RegionView3D *rv3d = region->regiondata;
-    bool orient_surface = snap_elem && (state->plane_orient == V3D_PLACE_ORIENT_SURFACE);
+    bool orient_surface = (snap_elem != SCE_SNAP_MODE_NONE) &&
+                          (state->plane_orient == V3D_PLACE_ORIENT_SURFACE);
     if (orient_surface) {
       copy_m3_m4(omat, obmat);
     }
@@ -701,7 +698,7 @@ static void v3d_cursor_snap_update(V3DSnapCursorState *state,
     }
   }
 
-  float *co_depth = snap_elem ? co : scene->cursor.location;
+  float *co_depth = (snap_elem != SCE_SNAP_MODE_NONE) ? co : scene->cursor.location;
   snap_elem &= ~data_intern->snap_elem_hidden;
   if (snap_elem == 0) {
     RegionView3D *rv3d = region->regiondata;
@@ -817,7 +814,7 @@ static void v3d_cursor_snap_draw_fn(bContext *C, int x, int y, void *UNUSED(cust
   }
 
   const bool draw_plane = state->draw_plane || state->draw_box;
-  if (!snap_data->snap_elem && !draw_plane) {
+  if (snap_data->snap_elem == SCE_SNAP_MODE_NONE && !draw_plane) {
     return;
   }
 
@@ -835,7 +832,7 @@ static void v3d_cursor_snap_draw_fn(bContext *C, int x, int y, void *UNUSED(cust
     v3d_cursor_plane_draw(rv3d, state->plane_axis, matrix);
   }
 
-  if (snap_data->snap_elem && (state->draw_point || state->draw_box)) {
+  if (snap_data->snap_elem != SCE_SNAP_MODE_NONE && (state->draw_point || state->draw_box)) {
     const float *prev_point = (snap_data->snap_elem & SCE_SNAP_MODE_EDGE_PERPENDICULAR) ?
                                   state->prevpoint :
                                   NULL;
@@ -968,28 +965,30 @@ void ED_view3d_cursor_snap_prevpoint_set(V3DSnapCursorState *state, const float 
   }
 }
 
-V3DSnapCursorData *ED_view3d_cursor_snap_data_get(V3DSnapCursorState *state,
-                                                  const bContext *C,
-                                                  const int x,
-                                                  const int y)
+void ED_view3d_cursor_snap_data_update(V3DSnapCursorState *state,
+                                       const bContext *C,
+                                       const int x,
+                                       const int y)
 {
   SnapCursorDataIntern *data_intern = &g_data_intern;
-  if (C) {
-    wmWindowManager *wm = CTX_wm_manager(C);
-    if (v3d_cursor_eventstate_has_changed(data_intern, state, wm, x, y)) {
-      Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
-      Scene *scene = DEG_get_input_scene(depsgraph);
-      ScrArea *area = CTX_wm_area(C);
-      ARegion *region = BKE_area_find_region_type(area, RGN_TYPE_WINDOW);
-      View3D *v3d = CTX_wm_view3d(C);
+  wmWindowManager *wm = CTX_wm_manager(C);
+  if (v3d_cursor_eventstate_has_changed(data_intern, state, wm, x, y)) {
+    Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
+    Scene *scene = DEG_get_input_scene(depsgraph);
+    ScrArea *area = CTX_wm_area(C);
+    ARegion *region = BKE_area_find_region_type(area, RGN_TYPE_WINDOW);
+    View3D *v3d = CTX_wm_view3d(C);
 
-      if (!state) {
-        state = ED_view3d_cursor_snap_state_get();
-      }
-      v3d_cursor_snap_update(state, C, wm, depsgraph, scene, region, v3d, x, y);
+    if (!state) {
+      state = ED_view3d_cursor_snap_state_get();
     }
+    v3d_cursor_snap_update(state, C, wm, depsgraph, scene, region, v3d, x, y);
   }
+}
 
+V3DSnapCursorData *ED_view3d_cursor_snap_data_get()
+{
+  SnapCursorDataIntern *data_intern = &g_data_intern;
   return &data_intern->snap_data;
 }
 

@@ -10,6 +10,7 @@
 #include "DNA_ID.h"
 #include "DNA_customdata_types.h"
 #include "DNA_defs.h"
+#include "DNA_session_uuid_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,6 +51,8 @@ typedef struct EditMeshData {
  * #BKE_mesh_runtime_looptri_ensure, #BKE_mesh_runtime_looptri_len.
  */
 struct MLoopTri_Store {
+  DNA_DEFINE_CXX_METHODS(MLoopTri_Store)
+
   /* WARNING! swapping between array (ready-to-be-used data) and array_wip
    * (where data is actually computed)
    * shall always be protected by same lock as one used for looptris computing. */
@@ -60,6 +63,8 @@ struct MLoopTri_Store {
 
 /** Runtime data, not saved in files. */
 typedef struct Mesh_Runtime {
+  DNA_DEFINE_CXX_METHODS(Mesh_Runtime)
+
   /* Evaluated mesh for objects which do not have effective modifiers.
    * This mesh is used as a result of modifier stack evaluation.
    * Since modifier stack evaluation is threaded on object level we need some synchronization. */
@@ -78,7 +83,7 @@ typedef struct Mesh_Runtime {
 
   /**
    * Data used to efficiently draw the mesh in the viewport, especially useful when
-   * the same mesh is used in many objects or instances. See `draw_cache_impl_mesh.c`.
+   * the same mesh is used in many objects or instances. See `draw_cache_impl_mesh.cc`.
    */
   void *batch_cache;
 
@@ -120,26 +125,39 @@ typedef struct Mesh_Runtime {
    * Settings for lazily evaluating the subdivision on the CPU if needed. These are
    * set in the modifier when GPU subdivision can be performed.
    */
+  SessionUUID subsurf_session_uuid;
+  char subsurf_resolution;
+  char subsurf_do_loop_normals;
   char subsurf_apply_render;
   char subsurf_use_optimal_display;
-  char _pad[2];
-  int subsurf_resolution;
 
-  void *_pad2;
+  /* Cached from the draw code for stats display. */
+  int subsurf_totvert;
+  int subsurf_totedge;
+  int subsurf_totpoly;
+  int subsurf_totloop;
+  char _pad2[2];
 
   /**
-   * Used to mark when derived data needs to be recalculated for a certain layer.
-   * Currently only normals.
+   * Caches for lazily computed vertex and polygon normals. These are stored here rather than in
+   * #CustomData because they can be calculated on a const mesh, and adding custom data layers on a
+   * const mesh is not thread-safe.
    */
+  char vert_normals_dirty;
+  char poly_normals_dirty;
+  float (*vert_normals)[3];
+  float (*poly_normals)[3];
 
-  int64_t cd_dirty_vert;
-  int64_t cd_dirty_edge;
-  int64_t cd_dirty_loop;
-  int64_t cd_dirty_poly;
-
+  /**
+   * A #BLI_bitmap containing tags for the center vertices of subdivided polygons, set by the
+   * subdivision surface modifier and used by drawing code instead of polygon center face dots.
+   */
+  uint32_t *subsurf_face_dot_tags;
 } Mesh_Runtime;
 
 typedef struct Mesh {
+  DNA_DEFINE_CXX_METHODS(Mesh)
+
   ID id;
   /** Animation data (must be immediately after id for utilities to use it). */
   struct AnimData *adt;
@@ -213,7 +231,7 @@ typedef struct Mesh {
   /**
    * The active vertex corner color layer, if it exists. Also called "Vertex Color" in Blender's
    * UI, even though it is stored per face corner.
-   * \note This pointer is for convenient access to the #CD_MLOOPCOL layer in #ldata.
+   * \note This pointer is for convenient access to the #CD_PROP_BYTE_COLOR layer in #ldata.
    */
   struct MLoopCol *mloopcol;
 
@@ -262,7 +280,7 @@ typedef struct Mesh {
   /** Various flags used when editing the mesh. */
   char editflag;
   /** Mostly more flags used when editing or displaying the mesh. */
-  short flag;
+  uint16_t flag;
 
   /**
    * The angle for auto smooth in radians. `M_PI` (180 degrees) causes all edges to be smooth.
@@ -338,6 +356,8 @@ typedef struct Mesh {
 /* deprecated by MTFace, only here for file reading */
 #ifdef DNA_DEPRECATED_ALLOW
 typedef struct TFace {
+  DNA_DEFINE_CXX_METHODS(TFace)
+
   /** The faces image for the active UVLayer. */
   void *tpage;
   float uv[4][2];

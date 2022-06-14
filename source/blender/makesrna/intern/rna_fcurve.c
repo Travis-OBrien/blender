@@ -786,11 +786,11 @@ static void rna_FModifier_active_update(Main *bmain, Scene *scene, PointerRNA *p
   rna_FModifier_update(bmain, scene, ptr);
 }
 
-static int rna_FModifierGenerator_coefficients_get_length(PointerRNA *ptr,
+static int rna_FModifierGenerator_coefficients_get_length(const PointerRNA *ptr,
                                                           int length[RNA_MAX_ARRAY_DIMENSION])
 {
-  FModifier *fcm = (FModifier *)ptr->data;
-  FMod_Generator *gen = fcm->data;
+  const FModifier *fcm = (FModifier *)ptr->data;
+  const FMod_Generator *gen = fcm->data;
 
   if (gen) {
     length[0] = gen->arraysize;
@@ -1776,12 +1776,12 @@ static void rna_def_drivertarget(BlenderRNA *brna)
       {DTAR_TRANSCHAN_LOCX, "LOC_X", 0, "X Location", ""},
       {DTAR_TRANSCHAN_LOCY, "LOC_Y", 0, "Y Location", ""},
       {DTAR_TRANSCHAN_LOCZ, "LOC_Z", 0, "Z Location", ""},
-      {0, "", 0, NULL, NULL},
+      RNA_ENUM_ITEM_SEPR,
       {DTAR_TRANSCHAN_ROTX, "ROT_X", 0, "X Rotation", ""},
       {DTAR_TRANSCHAN_ROTY, "ROT_Y", 0, "Y Rotation", ""},
       {DTAR_TRANSCHAN_ROTZ, "ROT_Z", 0, "Z Rotation", ""},
       {DTAR_TRANSCHAN_ROTW, "ROT_W", 0, "W Rotation", ""},
-      {0, "", 0, NULL, NULL},
+      RNA_ENUM_ITEM_SEPR,
       {DTAR_TRANSCHAN_SCALEX, "SCALE_X", 0, "X Scale", ""},
       {DTAR_TRANSCHAN_SCALEY, "SCALE_Y", 0, "Y Scale", ""},
       {DTAR_TRANSCHAN_SCALEZ, "SCALE_Z", 0, "Z Scale", ""},
@@ -1880,7 +1880,7 @@ static void rna_def_drivervar(BlenderRNA *brna)
        "SINGLE_PROP",
        ICON_RNA,
        "Single Property",
-       "Use the value from some RNA property (Default)"},
+       "Use the value from some RNA property"},
       {DVAR_TYPE_TRANSFORM_CHAN,
        "TRANSFORMS",
        ICON_DRIVER_TRANSFORM,
@@ -2111,6 +2111,7 @@ static void rna_def_fkeyframe(BlenderRNA *brna)
                            "Interpolation",
                            "Interpolation method to use for segment of the F-Curve from "
                            "this Keyframe until the next Keyframe");
+  RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_ACTION);
   RNA_def_property_update(prop, NC_ANIMATION | ND_KEYFRAME_PROP, "rna_Keyframe_update");
 
   prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
@@ -2131,6 +2132,7 @@ static void rna_def_fkeyframe(BlenderRNA *brna)
   prop = RNA_def_property(srna, "back", PROP_FLOAT, PROP_NONE);
   RNA_def_property_float_sdna(prop, NULL, "back");
   RNA_def_property_ui_text(prop, "Back", "Amount of overshoot for 'back' easing");
+  RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_ACTION);
   RNA_def_property_update(prop, NC_ANIMATION | ND_KEYFRAME_PROP, "rna_Keyframe_update");
 
   prop = RNA_def_property(srna, "amplitude", PROP_FLOAT, PROP_NONE);

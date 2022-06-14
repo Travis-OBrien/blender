@@ -1,7 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 
-#include "BKE_spline.hh"
-
 #include "node_geometry_util.hh"
 
 namespace blender::nodes::node_geo_input_curve_handles_cc {
@@ -28,7 +26,7 @@ class HandlePositionFieldInput final : public GeometryFieldInput {
   }
 
   GVArray get_varray_for_context(const GeometryComponent &component,
-                                 const AttributeDomain domain,
+                                 const eAttrDomain domain,
                                  IndexMask mask) const final
   {
     if (component.type() != GEO_COMPONENT_TYPE_CURVE) {

@@ -76,6 +76,7 @@ ustring OSLRenderServices::u_raster("raster");
 ustring OSLRenderServices::u_ndc("NDC");
 ustring OSLRenderServices::u_object_location("object:location");
 ustring OSLRenderServices::u_object_color("object:color");
+ustring OSLRenderServices::u_object_alpha("object:alpha");
 ustring OSLRenderServices::u_object_index("object:index");
 ustring OSLRenderServices::u_geom_dupli_generated("geom:dupli_generated");
 ustring OSLRenderServices::u_geom_dupli_uv("geom:dupli_uv");
@@ -594,8 +595,8 @@ static bool set_attribute_float4(float4 f, TypeDesc type, bool derivatives, void
   float4 fv[3];
 
   fv[0] = f;
-  fv[1] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
-  fv[2] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+  fv[1] = zero_float4();
+  fv[2] = zero_float4();
 
   return set_attribute_float4(fv, type, derivatives, val);
 }
@@ -872,6 +873,10 @@ bool OSLRenderServices::get_object_standard_attribute(const KernelGlobalsCPU *kg
   else if (name == u_object_color) {
     float3 f = object_color(kg, sd->object);
     return set_attribute_float3(f, type, derivatives, val);
+  }
+  else if (name == u_object_alpha) {
+    float f = object_alpha(kg, sd->object);
+    return set_attribute_float(f, type, derivatives, val);
   }
   else if (name == u_object_index) {
     float f = object_pass_id(kg, sd->object);
@@ -1299,8 +1304,38 @@ bool OSLRenderServices::texture(ustring filename,
       break;
     }
     case OSLTextureHandle::SVM: {
-      /* Packed texture. */
-      float4 rgba = kernel_tex_image_interp(kernel_globals, handle->svm_slot, s, 1.0f - t);
+      int id = -1;
+      if (handle->svm_slots[0].w == -1) {
+        /* Packed single texture. */
+        id = handle->svm_slots[0].y;
+      }
+      else {
+        /* Packed tiled texture. */
+        int tx = (int)s;
+        int ty = (int)t;
+        int tile = 1001 + 10 * ty + tx;
+        for (int4 tile_node : handle->svm_slots) {
+          if (tile_node.x == tile) {
+            id = tile_node.y;
+            break;
+          }
+          if (tile_node.z == tile) {
+            id = tile_node.w;
+            break;
+          }
+        }
+        s -= tx;
+        t -= ty;
+      }
+
+      float4 rgba;
+      if (id == -1) {
+        rgba = make_float4(
+            TEX_IMAGE_MISSING_R, TEX_IMAGE_MISSING_G, TEX_IMAGE_MISSING_B, TEX_IMAGE_MISSING_A);
+      }
+      else {
+        rgba = kernel_tex_image_interp(kernel_globals, id, s, 1.0f - t);
+      }
 
       result[0] = rgba[0];
       if (nchannels > 1)
@@ -1314,7 +1349,7 @@ bool OSLRenderServices::texture(ustring filename,
     }
     case OSLTextureHandle::IES: {
       /* IES light. */
-      result[0] = kernel_ies_interp(kernel_globals, handle->svm_slot, s, t);
+      result[0] = kernel_ies_interp(kernel_globals, handle->svm_slots[0].y, s, t);
       status = true;
       break;
     }
@@ -1408,7 +1443,7 @@ bool OSLRenderServices::texture3d(ustring filename,
       /* Packed texture. */
       ShaderData *sd = (ShaderData *)(sg->renderstate);
       KernelGlobals kernel_globals = sd->osl_globals;
-      int slot = handle->svm_slot;
+      int slot = handle->svm_slots[0].y;
       float3 P_float3 = make_float3(P.x, P.y, P.z);
       float4 rgba = kernel_tex_image_interp_3d(kernel_globals, slot, P_float3, INTERPOLATION_NONE);
 
@@ -1638,12 +1673,16 @@ bool OSLRenderServices::trace(TraceOpt &options,
   ray.D = TO_FLOAT3(R);
   ray.t = (options.maxdist == 1.0e30f) ? FLT_MAX : options.maxdist - options.mindist;
   ray.time = sd->time;
+  ray.self.object = OBJECT_NONE;
+  ray.self.prim = PRIM_NONE;
+  ray.self.light_object = OBJECT_NONE;
+  ray.self.light_prim = PRIM_NONE;
 
   if (options.mindist == 0.0f) {
     /* avoid self-intersections */
     if (ray.P == sd->P) {
-      bool transmit = (dot(sd->Ng, ray.D) < 0.0f);
-      ray.P = ray_offset(sd->P, (transmit) ? -sd->Ng : sd->Ng);
+      ray.self.object = sd->object;
+      ray.self.prim = sd->prim;
     }
   }
   else {

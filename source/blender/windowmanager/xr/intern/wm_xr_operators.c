@@ -731,8 +731,9 @@ static void wm_xr_raycast(Scene *scene,
       sctx,
       depsgraph,
       NULL,
-      &(const struct SnapObjectParams){
-          .snap_select = (selectable_only ? SNAP_SELECTABLE : SNAP_ALL)},
+      &(const struct SnapObjectParams){.snap_target_select = (selectable_only ?
+                                                                  SCE_SNAP_TARGET_ONLY_SELECTABLE :
+                                                                  SCE_SNAP_TARGET_ALL)},
       origin,
       direction,
       ray_dist,
@@ -867,7 +868,7 @@ static void wm_xr_fly_compute_turn(eXrFlyMode mode,
                                    const float nav_inv[4][4],
                                    float r_delta[4][4])
 {
-  BLI_assert(mode == XR_FLY_TURNLEFT || mode == XR_FLY_TURNRIGHT);
+  BLI_assert(ELEM(mode, XR_FLY_TURNLEFT, XR_FLY_TURNRIGHT));
 
   float z_axis[3], m[3][3], prev[4][4], curr[4][4];
 

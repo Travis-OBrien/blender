@@ -33,6 +33,7 @@ struct ViewLayer;
 struct bContext;
 struct bContextDataResult;
 struct bPoseChannel;
+struct View2D;
 struct wmKeyConfig;
 struct wmOperatorType;
 
@@ -108,7 +109,7 @@ typedef struct TreeElementIcon {
         ID_LI, \
         ID_OB, \
         ID_ME, \
-        ID_CU, \
+        ID_CU_LEGACY, \
         ID_MB, \
         ID_NT, \
         ID_MA, \
@@ -159,8 +160,6 @@ enum {
   /* Child elements of the same type in the icon-row are drawn merged as one icon.
    * This flag is set for an element that is part of these merged child icons. */
   TE_ICONROW_MERGED = (1 << 7),
-  /* This element has some warning to be displayed. */
-  TE_HAS_WARNING = (1 << 8),
 };
 
 /* button events */
@@ -218,8 +217,9 @@ typedef enum {
 
 /* is the current element open? if so we also show children */
 #define TSELEM_OPEN(telm, sv) \
-  (((telm)->flag & TSE_CLOSED) == 0 || \
-   (SEARCHING_OUTLINER(sv) && ((telm)->flag & TSE_CHILDSEARCH)))
+  (CHECK_TYPE_INLINE(telm, TreeStoreElem *), \
+   (((telm)->flag & TSE_CLOSED) == 0 || \
+    (SEARCHING_OUTLINER(sv) && ((telm)->flag & TSE_CHILDSEARCH))))
 
 /**
  * Container to avoid passing around these variables to many functions.
@@ -408,8 +408,12 @@ int outliner_flag_is_any_test(ListBase *lb, short flag, int curlevel);
  * Set or unset \a flag for all outliner elements in \a lb and sub-trees.
  * \return if any flag was modified.
  */
-bool outliner_flag_set(ListBase *lb, short flag, short set);
-bool outliner_flag_flip(ListBase *lb, short flag);
+extern "C++" {
+bool outliner_flag_set(const SpaceOutliner &space_outliner, short flag, short set);
+bool outliner_flag_set(const ListBase &lb, short flag, short set);
+bool outliner_flag_flip(const SpaceOutliner &space_outliner, short flag);
+bool outliner_flag_flip(const ListBase &lb, short flag);
+}
 
 void item_rename_fn(struct bContext *C,
                     struct ReportList *reports,
@@ -451,7 +455,8 @@ void id_remap_fn(struct bContext *C,
 /**
  * To retrieve coordinates with redrawing the entire tree.
  */
-void outliner_set_coordinates(struct ARegion *region, struct SpaceOutliner *space_outliner);
+void outliner_set_coordinates(const struct ARegion *region,
+                              const struct SpaceOutliner *space_outliner);
 
 /**
  * Open or close a tree element, optionally toggling all children recursively.
@@ -508,6 +513,11 @@ void OUTLINER_OT_drivers_delete_selected(struct wmOperatorType *ot);
 
 void OUTLINER_OT_orphans_purge(struct wmOperatorType *ot);
 
+/* outliner_query.cc ---------------------------------------------- */
+
+bool outliner_shows_mode_column(const SpaceOutliner &space_outliner);
+bool outliner_has_element_warnings(const SpaceOutliner &space_outliner);
+
 /* outliner_tools.c ---------------------------------------------- */
 
 void merged_element_search_menu_invoke(struct bContext *C,
@@ -534,6 +544,7 @@ void OUTLINER_OT_delete(struct wmOperatorType *ot);
 /* ---------------------------------------------------------------- */
 
 /* outliner_ops.c */
+
 void outliner_operatortypes(void);
 void outliner_keymap(struct wmKeyConfig *keyconf);
 
@@ -545,7 +556,7 @@ void outliner_collection_delete(struct bContext *C,
                                 struct Main *bmain,
                                 struct Scene *scene,
                                 struct ReportList *reports,
-                                bool hierarchy);
+                                bool do_hierarchy);
 
 void OUTLINER_OT_collection_new(struct wmOperatorType *ot);
 void OUTLINER_OT_collection_duplicate_linked(struct wmOperatorType *ot);
@@ -636,15 +647,21 @@ bool outliner_tree_traverse(const SpaceOutliner *space_outliner,
                             int filter_tselem_flag,
                             TreeTraversalFunc func,
                             void *customdata);
-float outliner_restrict_columns_width(const struct SpaceOutliner *space_outliner);
+float outliner_right_columns_width(const struct SpaceOutliner *space_outliner);
 /**
  * Find first tree element in tree with matching tree-store flag.
  */
 TreeElement *outliner_find_element_with_flag(const ListBase *lb, short flag);
 /**
- * Find if element is visible in the outliner tree.
+ * Find if element is visible in the outliner tree, i.e. if all of its parents are expanded.
+ * Doesn't check if the item is in view-bounds, for that use #outliner_is_element_in_view().
  */
 bool outliner_is_element_visible(const TreeElement *te);
+/**
+ * Check if the element is displayed within the view bounds. Doesn't check if all parents are
+ * open/uncollapsed.
+ */
+bool outliner_is_element_in_view(const TreeElement *te, const struct View2D *v2d);
 /**
  * Scroll view vertically while keeping within total bounds.
  */

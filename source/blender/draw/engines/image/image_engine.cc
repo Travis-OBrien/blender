@@ -107,6 +107,12 @@ class ImageEngine {
     space->release_buffer(instance_data->image, image_buffer, lock);
 
     ImageUser *iuser = space->get_image_user();
+    if (instance_data->image->rr != nullptr) {
+      BKE_image_multilayer_index(instance_data->image->rr, iuser);
+    }
+    else {
+      BKE_image_multiview_index(instance_data->image, iuser);
+    }
     drawing_mode.cache_image(vedata, instance_data->image, iuser);
   }
 

@@ -56,7 +56,7 @@ ID *do_versions_rename_id(Main *bmain,
   ListBase *lb = which_libbase(bmain, id_type);
   ID *id = nullptr;
   LISTBASE_FOREACH (ID *, idtest, lb) {
-    if (idtest->lib == nullptr) {
+    if (!ID_IS_LINKED(idtest)) {
       if (STREQ(idtest->name + 2, name_src)) {
         id = idtest;
       }
@@ -224,4 +224,11 @@ void version_socket_update_is_used(bNodeTree *ntree)
     link->fromsock->flag |= SOCK_IN_USE;
     link->tosock->flag |= SOCK_IN_USE;
   }
+}
+
+ARegion *do_versions_add_region(int regiontype, const char *name)
+{
+  ARegion *region = (ARegion *)MEM_callocN(sizeof(ARegion), name);
+  region->regiontype = regiontype;
+  return region;
 }

@@ -53,6 +53,7 @@
 #include "BIK_api.h"
 
 #include "RNA_access.h"
+#include "RNA_prototypes.h"
 
 #include "BLO_read_write.h"
 
@@ -979,13 +980,10 @@ void BKE_pose_channels_remove(Object *ob,
       else {
         /* Maybe something the bone references is being removed instead? */
         for (con = pchan->constraints.first; con; con = con->next) {
-          const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
           ListBase targets = {NULL, NULL};
           bConstraintTarget *ct;
 
-          if (cti && cti->get_constraint_targets) {
-            cti->get_constraint_targets(con, &targets);
-
+          if (BKE_constraint_targets_get(con, &targets)) {
             for (ct = targets.first; ct; ct = ct->next) {
               if (ct->tar == ob) {
                 if (ct->subtarget[0]) {
@@ -997,9 +995,7 @@ void BKE_pose_channels_remove(Object *ob,
               }
             }
 
-            if (cti->flush_constraint_targets) {
-              cti->flush_constraint_targets(con, &targets, 0);
-            }
+            BKE_constraint_targets_flush(con, &targets, 0);
           }
         }
 
@@ -1244,7 +1240,7 @@ void BKE_pose_update_constraint_flags(bPose *pose)
         /* if we have a valid target, make sure that this will get updated on frame-change
          * (needed for when there is no anim-data for this pose)
          */
-        if ((data->tar) && (data->tar->type == OB_CURVE)) {
+        if ((data->tar) && (data->tar->type == OB_CURVES_LEGACY)) {
           pose->flag |= POSE_CONSTRAINTS_TIMEDEPEND;
         }
       }

@@ -19,6 +19,8 @@ set(INC
   ../../windowmanager
   ../../../../intern/guardedalloc
   ../../../../intern/sky/include
+  # RNA_prototypes.h
+  ${CMAKE_BINARY_DIR}/source/blender/makesrna
 )
 
 
@@ -80,6 +82,7 @@ set(SRC
   nodes/node_shader_rgb.cc
   nodes/node_shader_rgb_to_bw.cc
   nodes/node_shader_script.cc
+  nodes/node_shader_sepcomb_color.cc
   nodes/node_shader_sepcomb_hsv.cc
   nodes/node_shader_sepcomb_rgb.cc
   nodes/node_shader_sepcomb_xyz.cc
@@ -125,6 +128,7 @@ set(SRC
 set(LIB
   bf_functions
   bf_intern_sky
+  bf_nodes
 )
 
 if(WITH_PYTHON)
@@ -151,3 +155,6 @@ if(WITH_UNITY_BUILD)
   set_target_properties(bf_nodes_shader PROPERTIES UNITY_BUILD ON)
   set_target_properties(bf_nodes_shader PROPERTIES UNITY_BUILD_BATCH_SIZE 10)
 endif()
+
+# RNA_prototypes.h
+add_dependencies(bf_nodes_shader bf_rna)

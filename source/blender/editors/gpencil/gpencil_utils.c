@@ -57,6 +57,7 @@
 #include "RNA_access.h"
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
+#include "RNA_prototypes.h"
 
 #include "UI_resources.h"
 #include "UI_view2d.h"
@@ -524,7 +525,7 @@ bool ED_gpencil_stroke_can_use_direct(const ScrArea *area, const bGPDstroke *gps
     return (area->spacetype == SPACE_IMAGE);
   }
   if (gps->flag & GP_STROKE_2DSPACE) {
-    /* 2D strokes (dataspace) - for any 2D view (i.e. everything other than 3D view) */
+    /* 2D strokes (data-space) - for any 2D view (i.e. everything other than 3D view). */
     return (area->spacetype != SPACE_VIEW3D);
   }
   /* view aligned - anything goes */
@@ -822,17 +823,16 @@ bool gpencil_point_xy_to_3d(const GP_SpaceConversion *gsc,
 
   ED_gpencil_drawing_reference_get(scene, gsc->ob, scene->toolsettings->gpencil_v3d_align, rvec);
 
-  float zfac = ED_view3d_calc_zfac(rv3d, rvec, NULL);
+  float zfac = ED_view3d_calc_zfac(rv3d, rvec);
 
-  float mval_f[2], mval_prj[2];
-  float dvec[3];
-
-  copy_v2_v2(mval_f, screen_co);
+  float mval_prj[2];
 
   if (ED_view3d_project_float_global(gsc->region, rvec, mval_prj, V3D_PROJ_TEST_NOP) ==
       V3D_PROJ_RET_OK) {
-    sub_v2_v2v2(mval_f, mval_prj, mval_f);
-    ED_view3d_win_to_delta(gsc->region, mval_f, dvec, zfac);
+    float dvec[3];
+    float xy_delta[2];
+    sub_v2_v2v2(xy_delta, mval_prj, screen_co);
+    ED_view3d_win_to_delta(gsc->region, xy_delta, zfac, dvec);
     sub_v3_v3v3(r_out, rvec, dvec);
 
     return true;
@@ -863,21 +863,21 @@ void gpencil_stroke_convertcoords_tpoint(Scene *scene,
      */
   }
   else {
-    float mval_f[2] = {UNPACK2(point2D->m_xy)};
     float mval_prj[2];
-    float rvec[3], dvec[3];
-    float zfac;
+    float rvec[3];
 
     /* Current method just converts each point in screen-coordinates to
      * 3D-coordinates using the 3D-cursor as reference.
      */
     ED_gpencil_drawing_reference_get(scene, ob, ts->gpencil_v3d_align, rvec);
-    zfac = ED_view3d_calc_zfac(region->regiondata, rvec, NULL);
+    const float zfac = ED_view3d_calc_zfac(region->regiondata, rvec);
 
     if (ED_view3d_project_float_global(region, rvec, mval_prj, V3D_PROJ_TEST_NOP) ==
         V3D_PROJ_RET_OK) {
-      sub_v2_v2v2(mval_f, mval_prj, mval_f);
-      ED_view3d_win_to_delta(region, mval_f, dvec, zfac);
+      float dvec[3];
+      float xy_delta[2];
+      sub_v2_v2v2(xy_delta, mval_prj, point2D->m_xy);
+      ED_view3d_win_to_delta(region, xy_delta, zfac, dvec);
       sub_v3_v3v3(r_out, rvec, dvec);
     }
     else {
@@ -1149,7 +1149,7 @@ void ED_gpencil_stroke_reproject(Depsgraph *depsgraph,
                                                depsgraph,
                                                v3d,
                                                &(const struct SnapObjectParams){
-                                                   .snap_select = SNAP_ALL,
+                                                   .snap_target_select = SCE_SNAP_TARGET_ALL,
                                                },
                                                &ray_start[0],
                                                &ray_normal[0],
@@ -1423,7 +1423,7 @@ void ED_gpencil_add_defaults(bContext *C, Object *ob)
   /* ensure a color exists and is assigned to object */
   BKE_gpencil_object_material_ensure_from_active_input_toolsettings(bmain, ob, ts);
 
-  /* ensure multiframe falloff curve */
+  /* Ensure multi-frame falloff curve. */
   if (ts->gp_sculpt.cur_falloff == NULL) {
     ts->gp_sculpt.cur_falloff = BKE_curvemapping_add(1, 0.0f, 0.0f, 1.0f, 1.0f);
     CurveMapping *gp_falloff_curve = ts->gp_sculpt.cur_falloff;
@@ -1747,7 +1747,7 @@ static void gpencil_brush_cursor_draw(bContext *C, int x, int y, void *customdat
   float darkcolor[3];
   float radius = 3.0f;
 
-  int mval_i[2] = {x, y};
+  const int mval_i[2] = {x, y};
   /* Check if cursor is in drawing region and has valid data-block. */
   if ((!gpencil_check_cursor_region(C, mval_i)) || (gpd == NULL)) {
     return;
@@ -2005,19 +2005,19 @@ static void gpencil_stroke_convertcoords(ARegion *region,
                                          const float origin[3],
                                          float out[3])
 {
-  float mval_f[2] = {UNPACK2(point2D->m_xy)};
   float mval_prj[2];
-  float rvec[3], dvec[3];
-  float zfac;
+  float rvec[3];
 
   copy_v3_v3(rvec, origin);
 
-  zfac = ED_view3d_calc_zfac(region->regiondata, rvec, NULL);
+  const float zfac = ED_view3d_calc_zfac(region->regiondata, rvec);
 
   if (ED_view3d_project_float_global(region, rvec, mval_prj, V3D_PROJ_TEST_NOP) ==
       V3D_PROJ_RET_OK) {
-    sub_v2_v2v2(mval_f, mval_prj, mval_f);
-    ED_view3d_win_to_delta(region, mval_f, dvec, zfac);
+    float dvec[3];
+    float xy_delta[2];
+    sub_v2_v2v2(xy_delta, mval_prj, point2D->m_xy);
+    ED_view3d_win_to_delta(region, xy_delta, zfac, dvec);
     sub_v3_v3v3(out, rvec, dvec);
   }
   else {
@@ -3074,6 +3074,11 @@ bGPDstroke *ED_gpencil_stroke_nearest_to_ends(bContext *C,
   LISTBASE_FOREACH (bGPDstroke *, gps_target, &gpf->strokes) {
     /* Check if the color is editable. */
     if ((gps_target == gps) || (ED_gpencil_stroke_material_editable(ob, gpl, gps) == false)) {
+      continue;
+    }
+
+    /* Check that stroke is not closed. Closed strokes must not be included in the merge. */
+    if (gps_target->flag & GP_STROKE_CYCLIC) {
       continue;
     }
 

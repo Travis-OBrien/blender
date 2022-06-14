@@ -100,7 +100,7 @@ class DeviceQueue {
    * based on number of cores and/or available memory. */
   virtual int num_concurrent_states(const size_t state_size) const = 0;
 
-  /* Number of states which keeps the device occupied with work without loosing performance.
+  /* Number of states which keeps the device occupied with work without losing performance.
    * The renderer will add more work (when available) when number of active paths falls below this
    * value. */
   virtual int num_concurrent_busy_states() const = 0;
@@ -111,9 +111,6 @@ class DeviceQueue {
    *
    * Use this method after device synchronization has finished before enqueueing any kernels. */
   virtual void init_execution() = 0;
-
-  /* Test if an optional device kernel is available. */
-  virtual bool kernel_available(DeviceKernel kernel) const = 0;
 
   /* Enqueue kernel execution.
    *

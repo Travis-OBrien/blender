@@ -96,6 +96,12 @@ static bool stats_mesheval(const Mesh *me_eval, bool is_selected, SceneStats *st
     const SubdivCCG *subdiv_ccg = me_eval->runtime.subdiv_ccg;
     BKE_subdiv_ccg_topology_counters(subdiv_ccg, &totvert, &totedge, &totface, &totloop);
   }
+  else if (me_eval->runtime.subsurf_resolution != 0) {
+    totvert = me_eval->runtime.subsurf_totvert;
+    totedge = me_eval->runtime.subsurf_totedge;
+    totface = me_eval->runtime.subsurf_totpoly;
+    totloop = me_eval->runtime.subsurf_totloop;
+  }
   else {
     totvert = me_eval->totvert;
     totedge = me_eval->totedge;
@@ -138,7 +144,7 @@ static void stats_object(Object *ob,
   switch (ob->type) {
     case OB_MESH: {
       /* we assume evaluated mesh is already built, this strictly does stats now. */
-      const Mesh *me_eval = BKE_object_get_evaluated_mesh(ob);
+      const Mesh *me_eval = BKE_object_get_evaluated_mesh_no_subsurf(ob);
       if (!BLI_gset_add(objects_gset, (void *)me_eval)) {
         break;
       }
@@ -152,7 +158,7 @@ static void stats_object(Object *ob,
       }
       break;
     case OB_SURF:
-    case OB_CURVE:
+    case OB_CURVES_LEGACY:
     case OB_FONT: {
       const Mesh *me_eval = BKE_object_get_evaluated_mesh(ob);
       if ((me_eval != nullptr) && !BLI_gset_add(objects_gset, (void *)me_eval)) {
@@ -260,7 +266,7 @@ static void stats_object_edit(Object *obedit, SceneStats *stats)
       stats->totvert += 2;
     }
   }
-  else if (ELEM(obedit->type, OB_CURVE, OB_SURF)) { /* OB_FONT has no cu->editnurb */
+  else if (ELEM(obedit->type, OB_CURVES_LEGACY, OB_SURF)) { /* OB_FONT has no cu->editnurb */
     /* Curve Edit */
     Curve *cu = static_cast<Curve *>(obedit->data);
     BezTriple *bezt;

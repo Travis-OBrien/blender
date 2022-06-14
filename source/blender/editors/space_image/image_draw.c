@@ -455,8 +455,8 @@ void draw_image_sample_line(SpaceImage *sima)
     immUniform2f("viewport_size", viewport_size[2] / UI_DPI_FAC, viewport_size[3] / UI_DPI_FAC);
 
     immUniform1i("colors_len", 2); /* Advanced dashes. */
-    immUniformArray4fv(
-        "colors", (float *)(float[][4]){{1.0f, 1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}}, 2);
+    immUniform4f("color", 1.0f, 1.0f, 1.0f, 1.0f);
+    immUniform4f("color2", 0.0f, 0.0f, 0.0f, 1.0f);
     immUniform1f("dash_width", 2.0f);
     immUniform1f("dash_factor", 0.5f);
 
@@ -541,7 +541,10 @@ void draw_image_cache(const bContext *C, ARegion *region)
     int num_segments = 0;
     int *points = NULL;
 
+    BLI_mutex_lock(image->runtime.cache_mutex);
     IMB_moviecache_get_cache_segments(image->cache, IMB_PROXY_NONE, 0, &num_segments, &points);
+    BLI_mutex_unlock(image->runtime.cache_mutex);
+
     ED_region_cache_draw_cached_segments(
         region, num_segments, points, sfra + sima->iuser.offset, efra + sima->iuser.offset);
   }

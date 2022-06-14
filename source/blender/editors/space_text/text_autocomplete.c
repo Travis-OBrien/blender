@@ -267,7 +267,8 @@ static void confirm_suggestion(Text *text)
   //  for (i = 0; i < skipleft; i++)
   //      txt_move_left(text, 0);
   BLI_assert(memcmp(sel->name, &line[i], over) == 0);
-  txt_insert_buf(text, sel->name + over);
+  const char *buf = sel->name + over;
+  txt_insert_buf(text, buf, strlen(buf));
 
   //  for (i = 0; i < skipleft; i++)
   //      txt_move_right(text, 0);
@@ -408,7 +409,7 @@ static int text_autocomplete_modal(bContext *C, wmOperator *op, const wmEvent *e
     case EVT_BACKSPACEKEY:
       if (event->val == KM_PRESS) {
         if (tools & TOOL_SUGG_LIST) {
-          if (event->ctrl) {
+          if (event->modifier & KM_CTRL) {
             texttool_suggest_clear();
             retval = OPERATOR_CANCELLED;
             draw = 1;
@@ -445,7 +446,7 @@ static int text_autocomplete_modal(bContext *C, wmOperator *op, const wmEvent *e
     case EVT_RIGHTARROWKEY:
       if (event->val == KM_PRESS) {
         if (tools & TOOL_SUGG_LIST) {
-          if (event->ctrl) {
+          if (event->modifier & KM_CTRL) {
             texttool_suggest_clear();
             retval = OPERATOR_CANCELLED;
             draw = 1;

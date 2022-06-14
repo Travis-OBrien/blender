@@ -23,7 +23,8 @@ const UserDef U_default = {
              USER_SCRIPT_AUTOEXEC_DISABLE | USER_NONEGFRAMES),
     .dupflag = USER_DUP_MESH | USER_DUP_CURVE | USER_DUP_SURF | USER_DUP_LATTICE | USER_DUP_FONT |
                USER_DUP_MBALL | USER_DUP_LAMP | USER_DUP_ARM | USER_DUP_CAMERA | USER_DUP_SPEAKER |
-               USER_DUP_ACT | USER_DUP_LIGHTPROBE | USER_DUP_GPENCIL,
+               USER_DUP_ACT | USER_DUP_LIGHTPROBE | USER_DUP_GPENCIL | USER_DUP_CURVES |
+               USER_DUP_POINTCLOUD,
     .pref_flag = USER_PREF_FLAG_SAVE,
     .savetime = 2,
     .tempdir = "",
@@ -144,7 +145,7 @@ const UserDef U_default = {
                    * so invert this by default, see: T67579. */
                   NDOF_ROTX_INVERT_AXIS | NDOF_ROTY_INVERT_AXIS | NDOF_ROTZ_INVERT_AXIS |
                   NDOF_PANX_INVERT_AXIS | NDOF_PANY_INVERT_AXIS | NDOF_PANZ_INVERT_AXIS |
-                  NDOF_ZOOM_INVERT),
+                  NDOF_ZOOM_INVERT | NDOF_CAMERA_PAN_ZOOM),
     .image_draw_method = IMAGE_DRAW_METHOD_AUTO,
     .glalphaclip = 0.004,
     .autokey_mode = (AUTOKEY_MODE_NORMAL & ~AUTOKEY_ON),

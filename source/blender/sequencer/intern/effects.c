@@ -40,13 +40,16 @@
 #include "BLI_math_color_blend.h"
 
 #include "RNA_access.h"
+#include "RNA_prototypes.h"
 
 #include "RE_pipeline.h"
 
+#include "SEQ_channels.h"
 #include "SEQ_effects.h"
 #include "SEQ_proxy.h"
 #include "SEQ_relations.h"
 #include "SEQ_render.h"
+#include "SEQ_time.h"
 #include "SEQ_utils.h"
 
 #include "BLF_api.h"
@@ -57,6 +60,10 @@
 #include "utils.h"
 
 static struct SeqEffectHandle get_sequence_effect_impl(int seq_type);
+
+/* -------------------------------------------------------------------- */
+/** \name Internal Utilities
+ * \{ */
 
 static void slice_get_byte_buffers(const SeqRenderData *context,
                                    const ImBuf *ibuf1,
@@ -108,7 +115,11 @@ static void slice_get_float_buffers(const SeqRenderData *context,
   }
 }
 
-/*********************** Glow effect *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Glow Effect
+ * \{ */
 
 enum {
   GlowR = 0,
@@ -178,7 +189,11 @@ static ImBuf *prepare_effect_imbufs(const SeqRenderData *context,
   return out;
 }
 
-/*********************** Alpha Over *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Alpha Over Effect
+ * \{ */
 
 static void init_alpha_over_or_under(Sequence *seq)
 {
@@ -288,7 +303,11 @@ static void do_alphaover_effect(const SeqRenderData *context,
   }
 }
 
-/*********************** Alpha Under *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Alpha Under Effect
+ * \{ */
 
 static void do_alphaunder_effect_byte(
     float fac, int x, int y, unsigned char *rect1, unsigned char *rect2, unsigned char *out)
@@ -405,7 +424,11 @@ static void do_alphaunder_effect(const SeqRenderData *context,
   }
 }
 
-/*********************** Cross *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Cross Effect
+ * \{ */
 
 static void do_cross_effect_byte(
     float fac, int x, int y, unsigned char *rect1, unsigned char *rect2, unsigned char *out)
@@ -482,7 +505,11 @@ static void do_cross_effect(const SeqRenderData *context,
   }
 }
 
-/*********************** Gamma Cross *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Gamma Cross
+ * \{ */
 
 /* copied code from initrender.c */
 static unsigned short gamtab[65536];
@@ -726,7 +753,11 @@ static void do_gammacross_effect(const SeqRenderData *context,
   }
 }
 
-/*********************** Add *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Color Add Effect
+ * \{ */
 
 static void do_add_effect_byte(
     float fac, int x, int y, unsigned char *rect1, unsigned char *rect2, unsigned char *out)
@@ -802,7 +833,11 @@ static void do_add_effect(const SeqRenderData *context,
   }
 }
 
-/*********************** Sub *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Color Subtract Effect
+ * \{ */
 
 static void do_sub_effect_byte(
     float fac, int x, int y, unsigned char *rect1, unsigned char *rect2, unsigned char *out)
@@ -880,7 +915,11 @@ static void do_sub_effect(const SeqRenderData *context,
   }
 }
 
-/*********************** Drop *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Drop Effect
+ * \{ */
 
 /* Must be > 0 or add precopy, etc to the function */
 #define XOFF 8
@@ -954,7 +993,11 @@ static void do_drop_effect_float(
   memcpy(out, rt1, sizeof(*out) * yoff * 4 * x);
 }
 
-/*********************** Mul *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Multiply Effect
+ * \{ */
 
 static void do_mul_effect_byte(
     float fac, int x, int y, unsigned char *rect1, unsigned char *rect2, unsigned char *out)
@@ -1035,7 +1078,12 @@ static void do_mul_effect(const SeqRenderData *context,
   }
 }
 
-/*********************** Blend Mode ***************************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Blend Mode Effect
+ * \{ */
+
 typedef void (*IMB_blend_func_byte)(unsigned char *dst,
                                     const unsigned char *src1,
                                     const unsigned char *src2);
@@ -1268,7 +1316,13 @@ static void do_blend_mode_effect(const SeqRenderData *context,
         fac, context->rectx, total_lines, rect1, rect2, seq->blend_mode, rect_out);
   }
 }
-/*********************** Color Mix Effect  *************************/
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Color Mix Effect
+ * \{ */
+
 static void init_colormix_effect(Sequence *seq)
 {
   ColorMixVars *data;
@@ -1314,7 +1368,11 @@ static void do_colormix_effect(const SeqRenderData *context,
   }
 }
 
-/*********************** Wipe *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Wipe Effect
+ * \{ */
 
 typedef struct WipeZone {
   float angle;
@@ -1334,7 +1392,9 @@ static void precalc_wipe_zone(WipeZone *wipezone, WipeVars *wipe, int xo, int yo
   wipezone->pythangle = 1.0f / sqrtf(wipezone->angle * wipezone->angle + 1.0f);
 }
 
-/* This function calculates the blur band for the wipe effects */
+/**
+ * This function calculates the blur band for the wipe effects.
+ */
 static float in_band(float width, float dist, int side, int dir)
 {
   float alpha;
@@ -1623,7 +1683,7 @@ static void do_wipe_effect_byte(Sequence *seq,
 
   for (int i = 0; i < y; i++) {
     for (int j = 0; j < x; j++) {
-      float check = check_zone(&wipezone, x, y, seq, fac);
+      float check = check_zone(&wipezone, j, i, seq, fac);
       if (check) {
         if (cp1) {
           float rt1[4], rt2[4], tempc[4];
@@ -1684,7 +1744,7 @@ static void do_wipe_effect_float(
 
   for (int i = 0; i < y; i++) {
     for (int j = 0; j < x; j++) {
-      float check = check_zone(&wipezone, x, y, seq, fac);
+      float check = check_zone(&wipezone, j, i, seq, fac);
       if (check) {
         if (rt1) {
           rt[0] = rt1[0] * check + rt2[0] * (1 - check);
@@ -1757,7 +1817,11 @@ static ImBuf *do_wipe_effect(const SeqRenderData *context,
   return out;
 }
 
-/*********************** Transform *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Transform Effect
+ * \{ */
 
 static void init_transform_effect(Sequence *seq)
 {
@@ -1909,7 +1973,11 @@ static void do_transform_effect(const SeqRenderData *context,
                   transform->interpolation);
 }
 
-/*********************** Glow *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Glow Effect
+ * \{ */
 
 static void RVBlurBitmap2_float(float *map, int width, int height, float blur, int quality)
 {
@@ -1918,7 +1986,7 @@ static void RVBlurBitmap2_float(float *map, int width, int height, float blur, i
    * I changed the math around to implement an actual Gaussian distribution.
    *
    * Watch out though, it tends to misbehave with large blur values on
-   * a small bitmap. Avoid avoid! */
+   * a small bitmap. Avoid! */
 
   float *temp = NULL, *swap;
   float *filter = NULL;
@@ -2229,7 +2297,11 @@ static ImBuf *do_glow_effect(const SeqRenderData *context,
   return out;
 }
 
-/*********************** Solid color *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Solid Color Effect
+ * \{ */
 
 static void init_solid_color(Sequence *seq)
 {
@@ -2324,9 +2396,13 @@ static ImBuf *do_solid_color(const SeqRenderData *context,
   return out;
 }
 
-/*********************** Mulitcam *************************/
+/** \} */
 
-/* no effect inputs for multicam, we use give_ibuf_seq */
+/* -------------------------------------------------------------------- */
+/** \name Multi-Camera Effect
+ * \{ */
+
+/** No effect inputs for multi-camera, we use #give_ibuf_seq. */
 static int num_inputs_multicam(void)
 {
   return 0;
@@ -2347,7 +2423,6 @@ static ImBuf *do_multicam(const SeqRenderData *context,
 {
   ImBuf *out;
   Editing *ed;
-  ListBase *seqbasep;
 
   if (seq->multicam_source == 0 || seq->multicam_source >= seq->machine) {
     return NULL;
@@ -2357,19 +2432,25 @@ static ImBuf *do_multicam(const SeqRenderData *context,
   if (!ed) {
     return NULL;
   }
-  seqbasep = SEQ_get_seqbase_by_seq(&ed->seqbase, seq);
+  ListBase *seqbasep = SEQ_get_seqbase_by_seq(context->scene, seq);
+  ListBase *channels = SEQ_get_channels_by_seq(&ed->seqbase, &ed->channels, seq);
   if (!seqbasep) {
     return NULL;
   }
 
-  out = seq_render_give_ibuf_seqbase(context, timeline_frame, seq->multicam_source, seqbasep);
+  out = seq_render_give_ibuf_seqbase(
+      context, timeline_frame, seq->multicam_source, channels, seqbasep);
 
   return out;
 }
 
-/*********************** Adjustment *************************/
+/** \} */
 
-/* no effect inputs for adjustment, we use give_ibuf_seq */
+/* -------------------------------------------------------------------- */
+/** \name Adjustment Effect
+ * \{ */
+
+/** No effect inputs for adjustment, we use #give_ibuf_seq. */
 static int num_inputs_adjustment(void)
 {
   return 0;
@@ -2383,20 +2464,23 @@ static int early_out_adjustment(Sequence *UNUSED(seq), float UNUSED(fac))
 static ImBuf *do_adjustment_impl(const SeqRenderData *context, Sequence *seq, float timeline_frame)
 {
   Editing *ed;
-  ListBase *seqbasep;
   ImBuf *i = NULL;
 
   ed = context->scene->ed;
 
-  seqbasep = SEQ_get_seqbase_by_seq(&ed->seqbase, seq);
+  ListBase *seqbasep = SEQ_get_seqbase_by_seq(context->scene, seq);
+  ListBase *channels = SEQ_get_channels_by_seq(&ed->seqbase, &ed->channels, seq);
 
   /* Clamp timeline_frame to strip range so it behaves as if it had "still frame" offset (last
    * frame is static after end of strip). This is how most strips behave. This way transition
    * effects that doesn't overlap or speed effect can't fail rendering outside of strip range. */
-  timeline_frame = clamp_i(timeline_frame, seq->startdisp, seq->enddisp - 1);
+  timeline_frame = clamp_i(timeline_frame,
+                           SEQ_time_left_handle_frame_get(seq),
+                           SEQ_time_right_handle_frame_get(seq) - 1);
 
   if (seq->machine > 1) {
-    i = seq_render_give_ibuf_seqbase(context, timeline_frame, seq->machine - 1, seqbasep);
+    i = seq_render_give_ibuf_seqbase(
+        context, timeline_frame, seq->machine - 1, channels, seqbasep);
   }
 
   /* Found nothing? so let's work the way up the meta-strip stack, so
@@ -2438,7 +2522,11 @@ static ImBuf *do_adjustment(const SeqRenderData *context,
   return out;
 }
 
-/*********************** Speed *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Speed Effect
+ * \{ */
 
 static void init_speed_effect(Sequence *seq)
 {
@@ -2498,7 +2586,7 @@ static int early_out_speed(Sequence *UNUSED(seq), float UNUSED(fac))
 static int seq_effect_speed_get_strip_content_length(const Sequence *seq)
 {
   if ((seq->type & SEQ_TYPE_EFFECT) != 0 && SEQ_effect_get_num_inputs(seq->type) == 0) {
-    return seq->enddisp - seq->startdisp;
+    return SEQ_time_right_handle_frame_get(seq) - SEQ_time_left_handle_frame_get(seq);
   }
 
   return seq->len;
@@ -2525,13 +2613,14 @@ void seq_effect_speed_rebuild_map(Scene *scene, Sequence *seq)
     MEM_freeN(v->frameMap);
   }
 
-  const int effect_strip_length = seq->enddisp - seq->startdisp;
+  const int effect_strip_length = SEQ_time_right_handle_frame_get(seq) -
+                                  SEQ_time_left_handle_frame_get(seq);
   v->frameMap = MEM_mallocN(sizeof(float) * effect_strip_length, __func__);
   v->frameMap[0] = 0.0f;
 
   float target_frame = 0;
   for (int frame_index = 1; frame_index < effect_strip_length; frame_index++) {
-    target_frame += evaluate_fcurve(fcu, seq->startdisp + frame_index);
+    target_frame += evaluate_fcurve(fcu, SEQ_time_left_handle_frame_get(seq) + frame_index);
     CLAMP(target_frame, 0, seq->seq1->len);
     v->frameMap[frame_index] = target_frame;
   }
@@ -2567,7 +2656,8 @@ float seq_speed_effect_target_frame_get(Scene *scene,
       /* Only right handle controls effect speed! */
       const float target_content_length = seq_effect_speed_get_strip_content_length(source) -
                                           source->startofs;
-      const float speed_effetct_length = seq_speed->enddisp - seq_speed->startdisp;
+      const float speed_effetct_length = SEQ_time_right_handle_frame_get(seq_speed) -
+                                         SEQ_time_left_handle_frame_get(seq_speed);
       const float ratio = frame_index / speed_effetct_length;
       target_frame = target_content_length * ratio;
       break;
@@ -2627,7 +2717,6 @@ static ImBuf *do_speed_effect(const SeqRenderData *context,
   ImBuf *out;
 
   if (s->flags & SEQ_SPEED_USE_INTERPOLATION) {
-    out = prepare_effect_imbufs(context, ibuf1, ibuf2, ibuf3);
     fac = speed_effect_interpolation_ratio_get(context->scene, seq, timeline_frame);
     /* Current frame is ibuf1, next frame is ibuf2. */
     out = seq_render_effect_execute_threaded(
@@ -2639,7 +2728,11 @@ static ImBuf *do_speed_effect(const SeqRenderData *context,
   return IMB_dupImBuf(ibuf1);
 }
 
-/*********************** overdrop *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Over-Drop Effect
+ * \{ */
 
 static void do_overdrop_effect(const SeqRenderData *context,
                                Sequence *UNUSED(seq),
@@ -2675,7 +2768,11 @@ static void do_overdrop_effect(const SeqRenderData *context,
   }
 }
 
-/*********************** Gaussian Blur *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Gaussian Blur
+ * \{ */
 
 /* NOTE: This gaussian blur implementation accumulates values in the square
  * kernel rather that doing X direction and then Y direction because of the
@@ -3099,7 +3196,11 @@ static ImBuf *do_gaussian_blur_effect(const SeqRenderData *context,
   return out;
 }
 
-/*********************** text *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Text Effect
+ * \{ */
 
 static void init_text_effect(Sequence *seq)
 {
@@ -3283,7 +3384,7 @@ static ImBuf *do_text_effect(const SeqRenderData *context,
   /* vars for calculating wordwrap and optional box */
   struct {
     struct ResultBLF info;
-    rctf rect;
+    rcti rect;
   } wrap;
 
   BLF_boundbox_ex(font, data->text, sizeof(data->text), &wrap.rect, &wrap.info);
@@ -3293,10 +3394,10 @@ static ImBuf *do_text_effect(const SeqRenderData *context,
   }
   else {
     if (data->align == SEQ_TEXT_ALIGN_X_RIGHT) {
-      x -= BLI_rctf_size_x(&wrap.rect);
+      x -= BLI_rcti_size_x(&wrap.rect);
     }
     else if (data->align == SEQ_TEXT_ALIGN_X_CENTER) {
-      x -= BLI_rctf_size_x(&wrap.rect) / 2;
+      x -= BLI_rcti_size_x(&wrap.rect) / 2;
     }
 
     if (data->align_y == SEQ_TEXT_ALIGN_Y_TOP) {
@@ -3341,7 +3442,11 @@ static ImBuf *do_text_effect(const SeqRenderData *context,
   return out;
 }
 
-/*********************** sequence effect factory *************************/
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Sequence Effect Factory
+ * \{ */
 
 static void init_noop(Sequence *UNUSED(seq))
 {
@@ -3409,7 +3514,7 @@ static void get_default_fac_noop(Sequence *UNUSED(seq), float UNUSED(timeline_fr
 
 static void get_default_fac_fade(Sequence *seq, float timeline_frame, float *fac)
 {
-  *fac = (float)(timeline_frame - seq->startdisp);
+  *fac = (float)(timeline_frame - SEQ_time_left_handle_frame_get(seq));
   *fac /= seq->len;
 }
 
@@ -3592,6 +3697,12 @@ static struct SeqEffectHandle get_sequence_effect_impl(int seq_type)
   return rval;
 }
 
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Public Sequencer Effect API
+ * \{ */
+
 struct SeqEffectHandle SEQ_effect_handle_get(Sequence *seq)
 {
   struct SeqEffectHandle rval = {false, false, NULL};
@@ -3633,9 +3744,11 @@ int SEQ_effect_get_num_inputs(int seq_type)
 {
   struct SeqEffectHandle rval = get_sequence_effect_impl(seq_type);
 
-  int cnt = rval.num_inputs();
+  int count = rval.num_inputs();
   if (rval.execute || (rval.execute_slice && rval.init_execution)) {
-    return cnt;
+    return count;
   }
   return 0;
 }
+
+/** \} */

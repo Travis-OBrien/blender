@@ -17,15 +17,15 @@ static void set_cyclic_in_component(GeometryComponent &component,
                                     const Field<bool> &cyclic_field)
 {
   GeometryComponentFieldContext field_context{component, ATTR_DOMAIN_CURVE};
-  const int domain_size = component.attribute_domain_size(ATTR_DOMAIN_CURVE);
-  if (domain_size == 0) {
+  const int domain_num = component.attribute_domain_num(ATTR_DOMAIN_CURVE);
+  if (domain_num == 0) {
     return;
   }
 
   OutputAttribute_Typed<bool> cyclics = component.attribute_try_get_for_output_only<bool>(
       "cyclic", ATTR_DOMAIN_CURVE);
 
-  fn::FieldEvaluator evaluator{field_context, domain_size};
+  fn::FieldEvaluator evaluator{field_context, domain_num};
   evaluator.set_selection(selection_field);
   evaluator.add_with_destination(cyclic_field, cyclics.varray());
   evaluator.evaluate();
@@ -40,7 +40,7 @@ static void node_geo_exec(GeoNodeExecParams params)
   Field<bool> cyclic_field = params.extract_input<Field<bool>>("Cyclic");
 
   geometry_set.modify_geometry_sets([&](GeometrySet &geometry_set) {
-    if (geometry_set.has_curve()) {
+    if (geometry_set.has_curves()) {
       set_cyclic_in_component(
           geometry_set.get_component_for_write<CurveComponent>(), selection_field, cyclic_field);
     }

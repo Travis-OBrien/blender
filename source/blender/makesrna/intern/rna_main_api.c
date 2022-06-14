@@ -92,6 +92,7 @@
 #  include "DNA_volume_types.h"
 #  include "DNA_world_types.h"
 
+#  include "ED_node.h"
 #  include "ED_screen.h"
 
 #  include "BLT_translation.h"
@@ -291,6 +292,7 @@ static struct bNodeTree *rna_Main_nodetree_new(Main *bmain, const char *name, in
   bNodeTreeType *typeinfo = rna_node_tree_type_from_enum(type);
   if (typeinfo) {
     bNodeTree *ntree = ntreeAddTree(bmain, safe_name, typeinfo->idname);
+    ED_node_tree_propagate_change(NULL, bmain, ntree);
 
     id_us_min(&ntree->id);
     return ntree;
@@ -322,7 +324,7 @@ static Mesh *rna_Main_meshes_new_from_object(Main *bmain,
 {
   switch (object->type) {
     case OB_FONT:
-    case OB_CURVE:
+    case OB_CURVES_LEGACY:
     case OB_SURF:
     case OB_MBALL:
     case OB_MESH:
@@ -822,7 +824,7 @@ RNA_MAIN_ID_TAG_FUNCS_DEF(screens, screens, ID_SCR)
 RNA_MAIN_ID_TAG_FUNCS_DEF(window_managers, wm, ID_WM)
 RNA_MAIN_ID_TAG_FUNCS_DEF(images, images, ID_IM)
 RNA_MAIN_ID_TAG_FUNCS_DEF(lattices, lattices, ID_LT)
-RNA_MAIN_ID_TAG_FUNCS_DEF(curves, curves, ID_CU)
+RNA_MAIN_ID_TAG_FUNCS_DEF(curves, curves, ID_CU_LEGACY)
 RNA_MAIN_ID_TAG_FUNCS_DEF(metaballs, metaballs, ID_MB)
 RNA_MAIN_ID_TAG_FUNCS_DEF(fonts, fonts, ID_VF)
 RNA_MAIN_ID_TAG_FUNCS_DEF(textures, textures, ID_TE)

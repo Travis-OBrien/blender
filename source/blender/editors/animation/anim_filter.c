@@ -1462,7 +1462,7 @@ static size_t animfilter_action(bAnimContext *ac,
   /* don't include anything from this action if it is linked in from another file,
    * and we're getting stuff for editing...
    */
-  if ((filter_mode & ANIMFILTER_FOREDIT) && ID_IS_LINKED(act)) {
+  if ((filter_mode & ANIMFILTER_FOREDIT) && (ID_IS_LINKED(act) || ID_IS_OVERRIDE_LIBRARY(act))) {
     return 0;
   }
 
@@ -2530,9 +2530,9 @@ static size_t animdata_filter_ds_obdata(
       expanded = FILTER_LAM_OBJD(la);
       break;
     }
-    case OB_CURVE: /* ------- Curve ---------- */
-    case OB_SURF:  /* ------- Nurbs Surface ---------- */
-    case OB_FONT:  /* ------- Text Curve ---------- */
+    case OB_CURVES_LEGACY: /* ------- Curve ---------- */
+    case OB_SURF:          /* ------- Nurbs Surface ---------- */
+    case OB_FONT:          /* ------- Text Curve ---------- */
     {
       Curve *cu = (Curve *)ob->data;
 

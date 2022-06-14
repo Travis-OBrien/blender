@@ -130,11 +130,6 @@ void BKE_object_eval_transform_final(Depsgraph *depsgraph, Object *ob)
   else {
     ob->transflag &= ~OB_NEG_SCALE;
   }
-
-  /* Assign evaluated version. */
-  if ((ob->type == OB_GPENCIL) && (ob->runtime.gpd_eval != NULL)) {
-    ob->data = ob->runtime.gpd_eval;
-  }
 }
 
 void BKE_object_handle_data_update(Depsgraph *depsgraph, Scene *scene, Object *ob)
@@ -167,7 +162,7 @@ void BKE_object_handle_data_update(Depsgraph *depsgraph, Scene *scene, Object *o
 #endif
       if (DEG_get_mode(depsgraph) == DAG_EVAL_RENDER) {
         /* Always compute UVs, vertex colors as orcos for render. */
-        cddata_masks.lmask |= CD_MASK_MLOOPUV | CD_MASK_MLOOPCOL;
+        cddata_masks.lmask |= CD_MASK_MLOOPUV | CD_MASK_PROP_BYTE_COLOR;
         cddata_masks.vmask |= CD_MASK_ORCO | CD_MASK_PROP_COLOR;
       }
       makeDerivedMesh(depsgraph, scene, ob, &cddata_masks); /* was CD_MASK_BAREMESH */
@@ -181,7 +176,7 @@ void BKE_object_handle_data_update(Depsgraph *depsgraph, Scene *scene, Object *o
       BKE_displist_make_mball(depsgraph, scene, ob);
       break;
 
-    case OB_CURVE:
+    case OB_CURVES_LEGACY:
     case OB_SURF:
     case OB_FONT: {
       bool for_render = (DEG_get_mode(depsgraph) == DAG_EVAL_RENDER);
@@ -243,7 +238,7 @@ void BKE_object_handle_data_update(Depsgraph *depsgraph, Scene *scene, Object *o
 /** Bounding box from evaluated geometry. */
 static void object_sync_boundbox_to_original(Object *object_orig, Object *object_eval)
 {
-  BoundBox *bb = object_eval->runtime.bb;
+  const BoundBox *bb = object_eval->runtime.bb;
   if (!bb || (bb->flag & BOUNDBOX_DIRTY)) {
     BKE_object_boundbox_calc_from_evaluated_geometry(object_eval);
   }
@@ -300,7 +295,7 @@ void BKE_object_data_batch_cache_dirty_tag(ID *object_data)
       BKE_lattice_batch_cache_dirty_tag((struct Lattice *)object_data,
                                         BKE_LATTICE_BATCH_DIRTY_ALL);
       break;
-    case ID_CU:
+    case ID_CU_LEGACY:
       BKE_curve_batch_cache_dirty_tag((struct Curve *)object_data, BKE_CURVE_BATCH_DIRTY_ALL);
       break;
     case ID_MB:
@@ -364,7 +359,7 @@ void BKE_object_data_select_update(Depsgraph *depsgraph, ID *object_data)
     case ID_ME:
       BKE_mesh_batch_cache_dirty_tag((Mesh *)object_data, BKE_MESH_BATCH_DIRTY_SELECT);
       break;
-    case ID_CU:
+    case ID_CU_LEGACY:
       BKE_curve_batch_cache_dirty_tag((Curve *)object_data, BKE_CURVE_BATCH_DIRTY_SELECT);
       break;
     case ID_LT:

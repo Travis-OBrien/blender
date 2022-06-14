@@ -42,6 +42,8 @@ GHOST_DECLARE_HANDLE(GHOST_EventConsumerHandle);
 GHOST_DECLARE_HANDLE(GHOST_ContextHandle);
 GHOST_DECLARE_HANDLE(GHOST_XrContextHandle);
 
+typedef void (*GHOST_TBacktraceFn)(void *file_handle);
+
 typedef struct {
   int flags;
 } GHOST_GLSettings;
@@ -403,6 +405,8 @@ typedef enum {
   GHOST_kGrabHide,
 } GHOST_TGrabCursorMode;
 
+#define GHOST_GRAB_NEEDS_SOFTWARE_CURSOR_FOR_WARP(grab) ((grab) == GHOST_kGrabWrap)
+
 typedef enum {
   /** Axis that cursor grab will wrap. */
   GHOST_kGrabAxisNone = 0,
@@ -521,7 +525,7 @@ typedef struct {
 } GHOST_TEventNDOFMotionData;
 
 typedef enum { GHOST_kPress, GHOST_kRelease } GHOST_TButtonAction;
-/* Good for mouse or other buttons too, hmmm? */
+/* Good for mouse or other buttons too? */
 
 typedef struct {
   GHOST_TButtonAction action;
@@ -572,6 +576,16 @@ typedef struct {
   /** Refresh rate (in Hertz). */
   uint32_t frequency;
 } GHOST_DisplaySetting;
+
+typedef enum {
+  /** Axis that cursor grab will wrap. */
+  GHOST_kDebugDefault = (1 << 1),
+  GHOST_kDebugWintab = (1 << 2),
+} GHOST_TDebugFlags;
+
+typedef struct {
+  int flags;
+} GHOST_Debug;
 
 #ifdef _WIN32
 typedef void *GHOST_TEmbedderWindowID;

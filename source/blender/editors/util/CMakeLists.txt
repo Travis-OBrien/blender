@@ -18,6 +18,8 @@ set(INC
   ../../../../intern/clog
   ../../../../intern/glew-mx
   ../../../../intern/guardedalloc
+  # RNA_prototypes.h
+  ${CMAKE_BINARY_DIR}/source/blender/makesrna
 )
 
 
@@ -39,6 +41,8 @@ set(SRC
   ../include/ED_buttons.h
   ../include/ED_clip.h
   ../include/ED_curve.h
+  ../include/ED_curves.h
+  ../include/ED_curves_sculpt.h
   ../include/ED_datafiles.h
   ../include/ED_file_indexer.h
   ../include/ED_fileselect.h
@@ -108,3 +112,6 @@ if(WITH_PYTHON)
 endif()
 
 blender_add_lib(bf_editor_util "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
+
+# RNA_prototypes.h
+add_dependencies(bf_editor_util bf_rna)

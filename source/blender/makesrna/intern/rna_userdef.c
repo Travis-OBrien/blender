@@ -1531,6 +1531,11 @@ static void rna_def_userdef_theme_ui(BlenderRNA *brna)
   RNA_def_property_ui_text(prop, "List Item Colors", "");
   RNA_def_property_update(prop, 0, "rna_userdef_theme_update");
 
+  prop = RNA_def_property(srna, "wcol_view_item", PROP_POINTER, PROP_NONE);
+  RNA_def_property_flag(prop, PROP_NEVER_NULL);
+  RNA_def_property_ui_text(prop, "Data-View Item Colors", "");
+  RNA_def_property_update(prop, 0, "rna_userdef_theme_update");
+
   prop = RNA_def_property(srna, "wcol_state", PROP_POINTER, PROP_NONE);
   RNA_def_property_flag(prop, PROP_NEVER_NULL);
   RNA_def_property_ui_text(prop, "State Colors", "");
@@ -6386,6 +6391,15 @@ static void rna_def_userdef_experimental(BlenderRNA *brna)
       "Override Auto Resync",
       "Enable library overrides automatic resync detection and process on file load. Disable when "
       "dealing with older .blend files that need manual Resync (Enforce) handling");
+
+  prop = RNA_def_property(srna, "use_override_new_fully_editable", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, NULL, "use_override_new_fully_editable", 1);
+  RNA_def_property_ui_text(
+      prop,
+      "Override New Fully Editable",
+      "Make all override of a hierarchy fully user-editable by default when creating a new "
+      "override (if that option is disabled, most overrides created as part of a hierarchy will "
+      "not be editable by the user by default)");
 
   prop = RNA_def_property(srna, "use_new_point_cloud_type", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_sdna(prop, NULL, "use_new_point_cloud_type", 1);

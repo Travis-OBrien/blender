@@ -1196,6 +1196,8 @@ class ThemeGenericClassGenerator:
             ("Scroll Bar", "wcol_scroll"),
             ("Progress Bar", "wcol_progress"),
             ("List Item", "wcol_list_item"),
+            # Not used yet, so hide this from the UI.
+            # ("Data-View Item", "wcol_view_item"),
             ("Tab", "wcol_tab"),
         ]
 
@@ -2277,6 +2279,7 @@ class USERPREF_PT_experimental_prototypes(ExperimentalPanel, Panel):
                 ({"property": "use_full_frame_compositor"}, "T88150"),
                 ({"property": "enable_eevee_next"}, "T93220"),
                 ({"property": "use_draw_manager_acquire_lock"}, "T98016"),
+                ({"property": "use_override_new_fully_editable"}, None),
             ),
         )
 

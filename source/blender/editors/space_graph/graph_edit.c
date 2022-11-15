@@ -723,7 +723,7 @@ static bool delete_graph_keys(bAnimContext *ac)
     bool changed;
 
     /* Delete selected keyframes only. */
-    changed = delete_fcurve_keys(fcu);
+    changed = BKE_fcurve_delete_keys_selected(fcu);
 
     if (changed) {
       ale->update |= ANIM_UPDATE_DEFAULT;
@@ -1448,7 +1448,7 @@ static int graphkeys_expo_exec(bContext *C, wmOperator *op)
 void GRAPH_OT_extrapolation_type(wmOperatorType *ot)
 {
   /* Identifiers */
-  ot->name = "Set Keyframe Extrapolation";
+  ot->name = "Set F-Curve Extrapolation";
   ot->idname = "GRAPH_OT_extrapolation_type";
   ot->description = "Set extrapolation mode for selected F-Curves";
 
@@ -1488,7 +1488,7 @@ static void setipo_graph_keys(bAnimContext *ac, short mode)
    * Currently that's not necessary here.
    */
   for (ale = anim_data.first; ale; ale = ale->next) {
-    ANIM_fcurve_keyframes_loop(NULL, ale->key_data, NULL, set_cb, calchandles_fcurve);
+    ANIM_fcurve_keyframes_loop(NULL, ale->key_data, NULL, set_cb, BKE_fcurve_handles_recalc);
 
     ale->update |= ANIM_UPDATE_DEFAULT_NOHANDLES;
   }
@@ -1566,7 +1566,7 @@ static void seteasing_graph_keys(bAnimContext *ac, short mode)
    * Currently that's not necessary here.
    */
   for (ale = anim_data.first; ale; ale = ale->next) {
-    ANIM_fcurve_keyframes_loop(NULL, ale->key_data, NULL, set_cb, calchandles_fcurve);
+    ANIM_fcurve_keyframes_loop(NULL, ale->key_data, NULL, set_cb, BKE_fcurve_handles_recalc);
 
     ale->update |= ANIM_UPDATE_DEFAULT_NOHANDLES;
   }
@@ -1649,7 +1649,7 @@ static void sethandles_graph_keys(bAnimContext *ac, short mode)
     /* Any selected keyframes for editing? */
     if (ANIM_fcurve_keyframes_loop(NULL, fcu, NULL, sel_cb, NULL)) {
       /* Change type of selected handles. */
-      ANIM_fcurve_keyframes_loop(NULL, fcu, NULL, edit_cb, calchandles_fcurve);
+      ANIM_fcurve_keyframes_loop(NULL, fcu, NULL, edit_cb, BKE_fcurve_handles_recalc);
 
       ale->update |= ANIM_UPDATE_DEFAULT;
     }
@@ -1771,7 +1771,7 @@ static ListBase /*tEulerFilter*/ euler_filter_group_channels(
      * so if the paths or the ID's don't match up, then a curve needs to be added
      * to a new group.
      */
-    if ((euf) && (euf->id == ale->id) && (STREQ(euf->rna_path, fcu->rna_path))) {
+    if ((euf) && (euf->id == ale->id) && STREQ(euf->rna_path, fcu->rna_path)) {
       /* This should be fine to add to the existing group then. */
       euf->fcurves[fcu->array_index] = fcu;
       continue;
@@ -2295,11 +2295,11 @@ static void snap_graph_keys(bAnimContext *ac, short mode)
     /* Perform snapping. */
     if (adt) {
       ANIM_nla_mapping_apply_fcurve(adt, ale->key_data, 0, 0);
-      ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, calchandles_fcurve);
+      ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, BKE_fcurve_handles_recalc);
       ANIM_nla_mapping_apply_fcurve(adt, ale->key_data, 1, 0);
     }
     else {
-      ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, calchandles_fcurve);
+      ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, BKE_fcurve_handles_recalc);
     }
 
     ale->update |= ANIM_UPDATE_DEFAULT;
@@ -2333,6 +2333,48 @@ static int graphkeys_snap_exec(bContext *C, wmOperator *op)
   return OPERATOR_FINISHED;
 }
 
+static bool graph_has_selected_control_points(struct bContext *C)
+{
+  bAnimContext ac;
+  ListBase anim_data = {NULL, NULL};
+
+  /* Get editor data. */
+  if (ANIM_animdata_get_context(C, &ac) == 0) {
+    return OPERATOR_CANCELLED;
+  }
+
+  /* Filter data. */
+  const int filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_CURVE_VISIBLE | ANIMFILTER_FCURVESONLY |
+                      ANIMFILTER_FOREDIT | ANIMFILTER_NODUPLIS);
+  ANIM_animdata_filter(&ac, &anim_data, filter, ac.data, ac.datatype);
+
+  /* Check if any of the visible and editable f-curves have at least one selected control point. */
+  bool has_selected_control_points = false;
+  LISTBASE_FOREACH (bAnimListElem *, ale, &anim_data) {
+    const FCurve *fcu = ale->key_data;
+    if (BKE_fcurve_has_selected_control_points(fcu)) {
+      has_selected_control_points = true;
+      break;
+    }
+  }
+
+  ANIM_animdata_freelist(&anim_data);
+
+  return has_selected_control_points;
+}
+
+static int graphkeys_selected_control_points_invoke(struct bContext *C,
+                                                    struct wmOperator *op,
+                                                    const struct wmEvent *event)
+{
+  if (!graph_has_selected_control_points(C)) {
+    BKE_report(op->reports, RPT_ERROR, "No control points are selected");
+    return OPERATOR_CANCELLED;
+  }
+
+  return WM_menu_invoke(C, op, event);
+}
+
 void GRAPH_OT_snap(wmOperatorType *ot)
 {
   /* Identifiers */
@@ -2341,7 +2383,7 @@ void GRAPH_OT_snap(wmOperatorType *ot)
   ot->description = "Snap selected keyframes to the chosen times/values";
 
   /* API callbacks */
-  ot->invoke = WM_menu_invoke;
+  ot->invoke = graphkeys_selected_control_points_invoke;
   ot->exec = graphkeys_snap_exec;
   ot->poll = graphop_editable_keyframes_poll;
 
@@ -2418,7 +2460,7 @@ void GRAPH_OT_equalize_handles(wmOperatorType *ot)
       "Ensure selected keyframes' handles have equal length, optionally making them horizontal. "
       "Automatic, Automatic Clamped, or Vector handle types will be converted to Aligned";
   /* API callbacks */
-  ot->invoke = WM_menu_invoke;
+  ot->invoke = graphkeys_selected_control_points_invoke;
   ot->exec = graphkeys_equalize_handles_exec;
   ot->poll = graphop_editable_keyframes_poll;
 
@@ -2555,11 +2597,11 @@ static void mirror_graph_keys(bAnimContext *ac, short mode)
     /* Perform actual mirroring. */
     if (adt) {
       ANIM_nla_mapping_apply_fcurve(adt, ale->key_data, 0, 0);
-      ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, calchandles_fcurve);
+      ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, BKE_fcurve_handles_recalc);
       ANIM_nla_mapping_apply_fcurve(adt, ale->key_data, 1, 0);
     }
     else {
-      ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, calchandles_fcurve);
+      ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, BKE_fcurve_handles_recalc);
     }
 
     ale->update |= ANIM_UPDATE_DEFAULT;
@@ -3020,7 +3062,7 @@ static int graph_driver_vars_paste_exec(bContext *C, wmOperator *op)
 
   /* Successful or not? */
   if (ok) {
-    /* Rebuild depsgraph, now that there are extra deps here. */
+    /* Rebuild depsgraph, now that there are extra dependencies here. */
     DEG_relations_tag_update(CTX_data_main(C));
 
     /* Set notifier that keyframes have changed. */

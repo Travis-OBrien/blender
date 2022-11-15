@@ -11,8 +11,6 @@
 
 #include "gpu_uniform_buffer_private.hh"
 
-#include "glew-mx.h"
-
 namespace blender {
 namespace gpu {
 
@@ -32,6 +30,7 @@ class GLUniformBuf : public UniformBuf {
 
   void update(const void *data) override;
   void bind(int slot) override;
+  void bind_as_ssbo(int slot) override;
   void unbind() override;
 
  private:

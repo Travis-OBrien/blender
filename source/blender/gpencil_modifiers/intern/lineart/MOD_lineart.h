@@ -14,6 +14,10 @@
 
 #include <math.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct LineartStaticMemPoolNode {
   Link item;
   size_t size;
@@ -74,6 +78,7 @@ typedef enum eLineArtElementNodeFlag {
   LRT_ELEMENT_NO_INTERSECTION = (1 << 2),
   LRT_ELEMENT_INTERSECTION_DATA = (1 << 3),
 } eLineArtElementNodeFlag;
+ENUM_OPERATORS(eLineArtElementNodeFlag, LRT_ELEMENT_INTERSECTION_DATA);
 
 typedef struct LineartElementLinkNode {
   struct LineartElementLinkNode *next, *prev;
@@ -84,6 +89,7 @@ typedef struct LineartElementLinkNode {
 
   /* For edge element link nodes, used for shadow edge matching. */
   int obindex;
+  int global_index_offset;
 
   /** Per object value, always set, if not enabled by #ObjectLineArt, then it's set to global. */
   float crease_threshold;
@@ -204,6 +210,10 @@ typedef struct LineartEdgeChain {
   uint8_t material_mask_bits;
   uint8_t intersection_mask;
   uint32_t shadow_mask_bits;
+
+  /* We need local index for correct weight transfer, line art index is global, thus
+   * local_index=lineart_index-index_offset. */
+  uint32_t index_offset;
 
   struct Object *object_ref;
   struct Object *silhouette_backdrop;
@@ -366,8 +376,9 @@ typedef struct LineartData {
 
     /* Keep an copy of these data so when line art is running it's self-contained. */
     bool cam_is_persp;
-    bool cam_is_persp_secondary; /* "Secondary" ones are from viewing camera (as opposed to shadow
-                                    camera), during shadow calculation. */
+    /* "Secondary" ones are from viewing camera
+     * (as opposed to shadow camera), during shadow calculation. */
+    bool cam_is_persp_secondary;
     float cam_obmat[4][4];
     float cam_obmat_secondary[4][4];
     double camera_pos[3];
@@ -436,15 +447,21 @@ typedef enum eLineartTriangleFlags {
   LRT_TRIANGLE_INTERSECTION_ONLY = (1 << 3),
   LRT_TRIANGLE_NO_INTERSECTION = (1 << 4),
   LRT_TRIANGLE_MAT_BACK_FACE_CULLING = (1 << 5),
+  LRT_TRIANGLE_FORCE_INTERSECTION = (1 << 6),
 } eLineartTriangleFlags;
 
 #define LRT_SHADOW_MASK_UNDEFINED 0
-#define LRT_SHADOW_MASK_LIT (1 << 0)
+#define LRT_SHADOW_MASK_ILLUMINATED (1 << 0)
 #define LRT_SHADOW_MASK_SHADED (1 << 1)
 #define LRT_SHADOW_MASK_ENCLOSED_SHAPE (1 << 2)
 #define LRT_SHADOW_MASK_INHIBITED (1 << 3)
 #define LRT_SHADOW_SILHOUETTE_ERASED_GROUP (1 << 4)
 #define LRT_SHADOW_SILHOUETTE_ERASED_OBJECT (1 << 5)
+#define LRT_SHADOW_MASK_ILLUMINATED_SHAPE (1 << 6)
+
+#define LRT_SHADOW_TEST_SHAPE_BITS \
+  (LRT_SHADOW_MASK_ILLUMINATED | LRT_SHADOW_MASK_SHADED | LRT_SHADOW_MASK_INHIBITED | \
+   LRT_SHADOW_MASK_ILLUMINATED_SHAPE)
 
 /**
  * Controls how many edges a worker thread is processing at one request.
@@ -477,6 +494,7 @@ typedef struct LineartRenderTaskInfo {
 typedef struct LineartObjectInfo {
   struct LineartObjectInfo *next;
   struct Object *original_ob;
+  struct Object *original_ob_eval; /* For evaluated materials */
   struct Mesh *original_me;
   double model_view_proj[4][4];
   double model_view[4][4];
@@ -858,6 +876,7 @@ void MOD_lineart_chain_find_silhouette_backdrop_objects(LineartData *ld);
 
 int MOD_lineart_chain_count(const LineartEdgeChain *ec);
 void MOD_lineart_chain_clear_picked_flag(LineartCache *lc);
+void MOD_lineart_finalize_chains(LineartData *ld);
 
 /**
  * This is the entry point of all line art calculations.
@@ -915,3 +934,7 @@ void MOD_lineart_gpencil_generate(LineartCache *cache,
 float MOD_lineart_chain_compute_length(LineartEdgeChain *ec);
 
 void ED_operatortypes_lineart(void);
+
+#ifdef __cplusplus
+}
+#endif

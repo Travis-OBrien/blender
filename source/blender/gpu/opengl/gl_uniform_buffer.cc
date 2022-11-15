@@ -65,11 +65,12 @@ void GLUniformBuf::update(const void *data)
 void GLUniformBuf::bind(int slot)
 {
   if (slot >= GLContext::max_ubo_binds) {
-    fprintf(stderr,
-            "Error: Trying to bind \"%s\" ubo to slot %d which is above the reported limit of %d.",
-            name_,
-            slot,
-            GLContext::max_ubo_binds);
+    fprintf(
+        stderr,
+        "Error: Trying to bind \"%s\" ubo to slot %d which is above the reported limit of %d.\n",
+        name_,
+        slot,
+        GLContext::max_ubo_binds);
     return;
   }
 
@@ -89,6 +90,19 @@ void GLUniformBuf::bind(int slot)
   BLI_assert(slot < 16);
   GLContext::get()->bound_ubo_slots |= 1 << slot;
 #endif
+}
+
+void GLUniformBuf::bind_as_ssbo(int slot)
+{
+  if (ubo_id_ == 0) {
+    this->init();
+  }
+  if (data_ != nullptr) {
+    this->update(data_);
+    MEM_SAFE_FREE(data_);
+  }
+
+  glBindBufferBase(GL_SHADER_STORAGE_BUFFER, slot, ubo_id_);
 }
 
 void GLUniformBuf::unbind()

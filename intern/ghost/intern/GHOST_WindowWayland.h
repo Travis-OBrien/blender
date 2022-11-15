@@ -12,10 +12,31 @@
 
 #include <vector>
 
+#include <wayland-util.h> /* For #wl_fixed_t */
+
+/**
+ * Define to workaround for a bug/limitation in WAYLAND, see: T100855 & upstream report:
+ * https://gitlab.freedesktop.org/wayland/wayland/-/issues/159
+ *
+ * Consume events from WAYLAND in a thread, this is needed because overflowing the event queue
+ * causes a fatal error (more than `sizeof(wl_buffer.data)` at the time of writing).
+ *
+ * Solve this using a thread that handles events, locking must be performed as follows:
+ *
+ * - Lock #GWL_Display.server_mutex to prevent wl_display_dispatch / wl_display_roundtrip
+ *   running from multiple threads at once.
+ *   GHOST functions that communicate with WAYLAND must use this lock to to be thread safe.
+ *
+ * - Lock #GWL_Display.timer_mutex when WAYLAND callbacks manipulate timers.
+ *
+ * - Lock #GWL_Display.events_pending_mutex before manipulating #GWL_Display.events_pending.
+ */
+#define USE_EVENT_BACKGROUND_THREAD
+
 class GHOST_SystemWayland;
 
-struct output_t;
-struct window_t;
+struct GWL_Output;
+struct GWL_Window;
 
 class GHOST_WindowWayland : public GHOST_Window {
  public:
@@ -37,6 +58,8 @@ class GHOST_WindowWayland : public GHOST_Window {
   ~GHOST_WindowWayland() override;
 
   /* Ghost API */
+
+  GHOST_TSuccess swapBuffers() override;
 
   uint16_t getDPIHint() override;
 
@@ -95,10 +118,10 @@ class GHOST_WindowWayland : public GHOST_Window {
 
   /* WAYLAND direct-data access. */
 
-  uint16_t dpi() const;
   int scale() const;
-  struct wl_surface *surface() const;
-  const std::vector<output_t *> &outputs();
+  wl_fixed_t scale_fractional() const;
+  struct wl_surface *wl_surface() const;
+  const std::vector<GWL_Output *> &outputs();
 
   /* WAYLAND window-level functions. */
 
@@ -109,15 +132,18 @@ class GHOST_WindowWayland : public GHOST_Window {
 
   /* WAYLAND utility functions. */
 
-  bool outputs_enter(output_t *reg_output);
-  bool outputs_leave(output_t *reg_output);
+  bool outputs_enter(GWL_Output *output);
+  bool outputs_leave(GWL_Output *output);
 
   bool outputs_changed_update_scale();
 
+#ifdef USE_EVENT_BACKGROUND_THREAD
+  void pending_actions_handle();
+#endif
+
  private:
-  GHOST_SystemWayland *m_system;
-  struct window_t *w;
-  std::string title;
+  GHOST_SystemWayland *system_;
+  struct GWL_Window *window_;
 
   /**
    * \param type: The type of rendering context create.

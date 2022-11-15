@@ -56,10 +56,33 @@ typedef struct TransDataNla {
 } TransDataNla;
 
 /* -------------------------------------------------------------------- */
+/** \name Transform application to NLA strips
+ * \{ */
+
+/**
+ * \brief Applies a translation to the given #NlaStrip.
+ * \param strip_rna_ptr: The RNA pointer of the NLA strip to modify.
+ * \param transdata: The transformation info structure.
+ */
+static void applyTransformNLA_translation(PointerRNA *strip_rna_ptr, const TransDataNla *transdata)
+{
+  /* NOTE: we write these twice to avoid truncation errors which can arise when
+   * moving the strips a large distance using numeric input T33852.
+   */
+  RNA_float_set(strip_rna_ptr, "frame_start", transdata->h1[0]);
+  RNA_float_set(strip_rna_ptr, "frame_end", transdata->h2[0]);
+
+  RNA_float_set(strip_rna_ptr, "frame_start", transdata->h1[0]);
+  RNA_float_set(strip_rna_ptr, "frame_end", transdata->h2[0]);
+}
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
 /** \name NLA Transform Creation
  * \{ */
 
-void createTransNlaData(bContext *C, TransInfo *t)
+static void createTransNlaData(bContext *C, TransInfo *t)
 {
   Scene *scene = t->scene;
   SpaceNla *snla = NULL;
@@ -249,7 +272,7 @@ void createTransNlaData(bContext *C, TransInfo *t)
   ANIM_animdata_freelist(&anim_data);
 }
 
-void recalcData_nla(TransInfo *t)
+static void recalcData_nla(TransInfo *t)
 {
   SpaceNla *snla = (SpaceNla *)t->area->spacedata.first;
 
@@ -329,15 +352,8 @@ void recalcData_nla(TransInfo *t)
      *
      * this is done as a iterative procedure (done 5 times max for now)
      */
-    NlaStrip *prev = strip->prev;
-    while (prev != NULL && (prev->type & NLASTRIP_TYPE_TRANSITION)) {
-      prev = prev->prev;
-    }
-
-    NlaStrip *next = strip->next;
-    while (next != NULL && (next->type & NLASTRIP_TYPE_TRANSITION)) {
-      next = next->next;
-    }
+    NlaStrip *prev = BKE_nlastrip_prev_in_track(strip, true);
+    NlaStrip *next = BKE_nlastrip_next_in_track(strip, true);
 
     for (short iter = 0; iter < 5; iter++) {
       const bool pExceeded = (prev != NULL) && (tdn->h1[0] < prev->end);
@@ -380,17 +396,10 @@ void recalcData_nla(TransInfo *t)
 
     /* Use RNA to write the values to ensure that constraints on these are obeyed
      * (e.g. for transition strips, the values are taken from the neighbors)
-     *
-     * NOTE: we write these twice to avoid truncation errors which can arise when
-     * moving the strips a large distance using numeric input T33852.
      */
     RNA_pointer_create(NULL, &RNA_NlaStrip, strip, &strip_ptr);
 
-    RNA_float_set(&strip_ptr, "frame_start", tdn->h1[0]);
-    RNA_float_set(&strip_ptr, "frame_end", tdn->h2[0]);
-
-    RNA_float_set(&strip_ptr, "frame_start", tdn->h1[0]);
-    RNA_float_set(&strip_ptr, "frame_end", tdn->h2[0]);
+    applyTransformNLA_translation(&strip_ptr, tdn);
 
     /* flush transforms to child strips (since this should be a meta) */
     BKE_nlameta_flush_transforms(strip);
@@ -464,7 +473,7 @@ void recalcData_nla(TransInfo *t)
 /** \name Special After Transform NLA
  * \{ */
 
-void special_aftertrans_update__nla(bContext *C, TransInfo *UNUSED(t))
+static void special_aftertrans_update__nla(bContext *C, TransInfo *UNUSED(t))
 {
   bAnimContext ac;
 
@@ -506,3 +515,10 @@ void special_aftertrans_update__nla(bContext *C, TransInfo *UNUSED(t))
 }
 
 /** \} */
+
+TransConvertTypeInfo TransConvertType_NLA = {
+    /* flags */ (T_POINTS | T_2D_EDIT),
+    /* createTransData */ createTransNlaData,
+    /* recalcData */ recalcData_nla,
+    /* special_aftertrans_update */ special_aftertrans_update__nla,
+};

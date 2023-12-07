@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma once
 
@@ -39,6 +41,7 @@
  */
 
 #include "BLI_cpp_type.hh"
+#include "BLI_function_ref.hh"
 #include "BLI_generic_pointer.hh"
 #include "BLI_linear_allocator.hh"
 #include "BLI_vector.hh"
@@ -46,13 +49,13 @@
 #include <atomic>
 #include <thread>
 
-#ifdef DEBUG
+#ifndef NDEBUG
 #  define FN_LAZY_FUNCTION_DEBUG_THREADS
 #endif
 
 namespace blender::fn::lazy_function {
 
-enum class ValueUsage {
+enum class ValueUsage : uint8_t {
   /**
    * The value is definitely used and therefore has to be computed.
    */
@@ -72,6 +75,16 @@ enum class ValueUsage {
 class LazyFunction;
 
 /**
+ * Extension of #UserData that is thread-local. This avoids accessing e.g.
+ * `EnumerableThreadSpecific.local()` in every nested lazy-function because the thread local
+ * data is passed in by the caller.
+ */
+class LocalUserData {
+ public:
+  virtual ~LocalUserData() = default;
+};
+
+/**
  * This allows passing arbitrary data into a lazy-function during execution. For that, #UserData
  * has to be subclassed. This mainly exists because it's more type safe than passing a `void *`
  * with no type information attached.
@@ -81,6 +94,11 @@ class LazyFunction;
 class UserData {
  public:
   virtual ~UserData() = default;
+
+  /**
+   * Get thread local data for this user-data and the current thread.
+   */
+  virtual destruct_ptr<LocalUserData> get_local(LinearAllocator<> &allocator);
 };
 
 /**
@@ -97,6 +115,15 @@ struct Context {
    * Custom user data that can be used in the function.
    */
   UserData *user_data;
+  /**
+   * Custom user data that is local to the thread that executes the lazy-function.
+   */
+  LocalUserData *local_user_data;
+
+  Context(void *storage, UserData *user_data, LocalUserData *local_user_data)
+      : storage(storage), user_data(user_data), local_user_data(local_user_data)
+  {
+  }
 };
 
 /**
@@ -165,7 +192,8 @@ class Params {
    * Typed utility methods that wrap the methods above.
    */
   template<typename T> T extract_input(int index);
-  template<typename T> const T &get_input(int index) const;
+  template<typename T> T &get_input(int index) const;
+  template<typename T> T *try_get_input_data_ptr(int index) const;
   template<typename T> T *try_get_input_data_ptr_or_request(int index);
   template<typename T> void set_output(int index, T &&value);
 
@@ -239,9 +267,7 @@ struct Output {
    */
   const CPPType *type = nullptr;
 
-  Output(const char *debug_name, const CPPType &type) : debug_name(debug_name), type(&type)
-  {
-  }
+  Output(const char *debug_name, const CPPType &type) : debug_name(debug_name), type(&type) {}
 };
 
 /**
@@ -250,9 +276,13 @@ struct Output {
  */
 class LazyFunction {
  protected:
-  const char *debug_name_ = "<unknown>";
+  const char *debug_name_ = "unknown";
   Vector<Input> inputs_;
   Vector<Output> outputs_;
+  /**
+   * Allow executing the function even if previously requested values are not yet available.
+   */
+  bool allow_missing_requested_inputs_ = false;
 
  public:
   virtual ~LazyFunction() = default;
@@ -278,6 +308,13 @@ class LazyFunction {
   virtual void destruct_storage(void *storage) const;
 
   /**
+   * Calls `fn` with the input indices that the given `output_index` may depend on. By default
+   * every output depends on every input.
+   */
+  virtual void possible_output_dependencies(int output_index,
+                                            FunctionRef<void(Span<int>)> fn) const;
+
+  /**
    * Inputs of the function.
    */
   Span<Input> inputs() const;
@@ -297,6 +334,17 @@ class LazyFunction {
    * Utility to check that the guarantee by #Input::usage is followed.
    */
   bool always_used_inputs_available(const Params &params) const;
+
+  /**
+   * If true, the function can be executed even when some requested inputs are not available yet.
+   * This allows the function to make some progress and maybe to compute some outputs that are
+   * passed into this function again (lazy-function graphs may contain cycles as long as there
+   * aren't actually data dependencies).
+   */
+  bool allow_missing_requested_inputs() const
+  {
+    return allow_missing_requested_inputs_;
+  }
 
  private:
   /**
@@ -345,39 +393,46 @@ inline Params::Params(const LazyFunction &fn,
 
 inline void *Params::try_get_input_data_ptr(const int index) const
 {
+  BLI_assert(index >= 0 && index < fn_.inputs().size());
   return this->try_get_input_data_ptr_impl(index);
 }
 
 inline void *Params::try_get_input_data_ptr_or_request(const int index)
 {
+  BLI_assert(index >= 0 && index < fn_.inputs().size());
   this->assert_valid_thread();
   return this->try_get_input_data_ptr_or_request_impl(index);
 }
 
 inline void *Params::get_output_data_ptr(const int index)
 {
+  BLI_assert(index >= 0 && index < fn_.outputs().size());
   this->assert_valid_thread();
   return this->get_output_data_ptr_impl(index);
 }
 
 inline void Params::output_set(const int index)
 {
+  BLI_assert(index >= 0 && index < fn_.outputs().size());
   this->assert_valid_thread();
   this->output_set_impl(index);
 }
 
 inline bool Params::output_was_set(const int index) const
 {
+  BLI_assert(index >= 0 && index < fn_.outputs().size());
   return this->output_was_set_impl(index);
 }
 
 inline ValueUsage Params::get_output_usage(const int index) const
 {
+  BLI_assert(index >= 0 && index < fn_.outputs().size());
   return this->get_output_usage_impl(index);
 }
 
 inline void Params::set_input_unused(const int index)
 {
+  BLI_assert(index >= 0 && index < fn_.inputs().size());
   this->assert_valid_thread();
   this->set_input_unused_impl(index);
 }
@@ -391,11 +446,17 @@ template<typename T> inline T Params::extract_input(const int index)
   return return_value;
 }
 
-template<typename T> inline const T &Params::get_input(const int index) const
+template<typename T> inline T &Params::get_input(const int index) const
 {
-  const void *data = this->try_get_input_data_ptr(index);
+  void *data = this->try_get_input_data_ptr(index);
   BLI_assert(data != nullptr);
-  return *static_cast<const T *>(data);
+  return *static_cast<T *>(data);
+}
+
+template<typename T> inline T *Params::try_get_input_data_ptr(const int index) const
+{
+  this->assert_valid_thread();
+  return static_cast<T *>(this->try_get_input_data_ptr(index));
 }
 
 template<typename T> inline T *Params::try_get_input_data_ptr_or_request(const int index)
@@ -440,3 +501,7 @@ inline void Params::assert_valid_thread() const
 /** \} */
 
 }  // namespace blender::fn::lazy_function
+
+namespace blender {
+namespace lf = fn::lazy_function;
+}

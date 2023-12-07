@@ -1,28 +1,13 @@
+/* SPDX-FileCopyrightText: 2018-2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /* WORKAROUND: to guard against double include in EEVEE. */
 #ifndef COMMON_VIEW_LIB_GLSL
 #define COMMON_VIEW_LIB_GLSL
 
-/* Temporary until we fully make the switch. */
-#if !defined(USE_GPU_SHADER_CREATE_INFO)
-
-#  define DRW_RESOURCE_CHUNK_LEN 512
-
-/* keep in sync with DRWManager.view_data */
-layout(std140) uniform viewBlock
-{
-  mat4 ViewMatrix;
-  mat4 ViewMatrixInverse;
-  mat4 ProjectionMatrix;
-  mat4 ProjectionMatrixInverse;
-};
-
-#endif /* USE_GPU_SHADER_CREATE_INFO */
-
-#ifdef USE_GPU_SHADER_CREATE_INFO
-#  ifndef DRW_RESOURCE_CHUNK_LEN
-#    error Missing draw_view additional create info on shader create info
-#  endif
+#ifndef DRW_RESOURCE_CHUNK_LEN
+#  error Missing draw_view additional create info on shader create info
 #endif
 
 /* Not supported anymore. TODO(fclem): Add back support. */
@@ -39,7 +24,7 @@ vec3 cameraVec(vec3 P)
 
 #ifdef COMMON_GLOBALS_LIB
 /* TODO move to overlay engine. */
-float mul_project_m4_v3_zfac(in vec3 co)
+float mul_project_m4_v3_zfac(vec3 co)
 {
   vec3 vP = (ViewMatrix * vec4(co, 1.0)).xyz;
   return pixelFac * ((ProjectionMatrix[0][3] * vP.x) + (ProjectionMatrix[1][3] * vP.y) +
@@ -86,7 +71,7 @@ vec4 pack_line_data(vec2 frag_co, vec2 edge_start, vec2 edge_pos)
 /* Temporary until we fully make the switch. */
 #ifndef USE_GPU_SHADER_CREATE_INFO
 uniform int drw_resourceChunk;
-#endif /* USE_GPU_SHADER_CREATE_INFO */
+#endif /* !USE_GPU_SHADER_CREATE_INFO */
 
 #ifdef GPU_VERTEX_SHADER
 
@@ -104,7 +89,7 @@ uniform int drw_resourceChunk;
 
 #    if defined(UNIFORM_RESOURCE_ID)
 /* This is in the case we want to do a special instance drawcall for one object but still want to
- * have the right resourceId and all the correct ubo datas. */
+ * have the right resourceId and all the correct UBO datas. */
 uniform int drw_ResourceID;
 #      define resource_id drw_ResourceID
 #    else
@@ -144,7 +129,7 @@ uniform int drw_ResourceID;
 #    define PASS_RESOURCE_ID drw_ResourceID_iface.resource_index = resource_id;
 
 #  elif defined(GPU_GEOMETRY_SHADER)
-#    define resource_id drw_ResourceID_iface_in[0].index
+#    define resource_id drw_ResourceID_iface_in[0].resource_index
 #    define PASS_RESOURCE_ID drw_ResourceID_iface_out.resource_index = resource_id;
 
 #  elif defined(GPU_FRAGMENT_SHADER)
@@ -191,7 +176,7 @@ struct ObjectMatrices {
   mat4 model;
   mat4 model_inverse;
 };
-#  endif /* DRW_SHADER_SHARED_H */
+#  endif /* !DRW_SHADER_SHARED_H */
 
 #  ifndef USE_GPU_SHADER_CREATE_INFO
 layout(std140) uniform modelBlock
@@ -210,10 +195,10 @@ layout(std140) uniform modelBlock
 /* Intel GPU seems to suffer performance impact when the model matrix is in UBO storage.
  * So for now we just force using the legacy path. */
 /* Note that this is also a workaround of a problem on OSX (AMD or NVIDIA)
- * and older amd driver on windows. */
+ * and older AMD driver on windows. */
 uniform mat4 ModelMatrix;
 uniform mat4 ModelMatrixInverse;
-#  endif /* USE_GPU_SHADER_CREATE_INFO */
+#  endif /* !USE_GPU_SHADER_CREATE_INFO */
 
 #endif
 
@@ -223,7 +208,7 @@ uniform mat4 ModelMatrixInverse;
 #endif
 
 /** Transform shortcuts. */
-/* Rule of thumb: Try to reuse world positions and normals because converting through viewspace
+/* Rule of thumb: Try to reuse world positions and normals because converting through view-space
  * will always be decomposed in at least 2 matrix operation. */
 
 /**
@@ -252,12 +237,49 @@ uniform mat4 ModelMatrixInverse;
   (ProjectionMatrix * (ViewMatrix * vec4((ModelMatrix * vec4(p, 1.0)).xyz, 1.0)))
 #define point_object_to_view(p) ((ViewMatrix * vec4((ModelMatrix * vec4(p, 1.0)).xyz, 1.0)).xyz)
 #define point_object_to_world(p) ((ModelMatrix * vec4(p, 1.0)).xyz)
-#define point_view_to_ndc(p) (ProjectionMatrix * vec4(p, 1.0))
 #define point_view_to_object(p) ((ModelMatrixInverse * (ViewMatrixInverse * vec4(p, 1.0))).xyz)
-#define point_view_to_world(p) ((ViewMatrixInverse * vec4(p, 1.0)).xyz)
-#define point_world_to_ndc(p) (ProjectionMatrix * (ViewMatrix * vec4(p, 1.0)))
 #define point_world_to_object(p) ((ModelMatrixInverse * vec4(p, 1.0)).xyz)
-#define point_world_to_view(p) ((ViewMatrix * vec4(p, 1.0)).xyz)
+
+vec4 point_view_to_ndc(vec3 p)
+{
+  return ProjectionMatrix * vec4(p, 1.0);
+}
+
+vec3 point_view_to_world(vec3 p)
+{
+  return (ViewMatrixInverse * vec4(p, 1.0)).xyz;
+}
+
+vec4 point_world_to_ndc(vec3 p)
+{
+  return ProjectionMatrix * (ViewMatrix * vec4(p, 1.0));
+}
+
+vec3 point_world_to_view(vec3 p)
+{
+  return (ViewMatrix * vec4(p, 1.0)).xyz;
+}
+
+/* View-space Z is used to adjust for perspective projection.
+ * Homogenous W is used to convert from NDC to homogenous space.
+ * Offset is in view-space, so positive values are closer to the camera. */
+float get_homogenous_z_offset(float vs_z, float hs_w, float vs_offset)
+{
+  if (vs_offset == 0.0) {
+    /* Don't calculate homogenous offset if view-space offset is zero. */
+    return 0.0;
+  }
+  else if (ProjectionMatrix[3][3] == 0.0) {
+    /* Clamp offset to half of Z to avoid floating point precision errors. */
+    vs_offset = min(vs_offset, vs_z * -0.5);
+    /* From "Projection Matrix Tricks" by Eric Lengyel:
+     * http://www.terathon.com/gdc07_lengyel.pdf (p. 24 Depth Modification) */
+    return ProjectionMatrix[3][2] * (vs_offset / (vs_z * (vs_z + vs_offset))) * hs_w;
+  }
+  else {
+    return ProjectionMatrix[2][2] * vs_offset * hs_w;
+  }
+}
 
 /* Due to some shader compiler bug, we somewhat need to access gl_VertexID
  * to make vertex shaders work. even if it's actually dead code. */
@@ -271,6 +293,11 @@ uniform mat4 ModelMatrixInverse;
 #define DRW_BASE_FROM_DUPLI (1 << 2)
 #define DRW_BASE_FROM_SET (1 << 3)
 #define DRW_BASE_ACTIVE (1 << 4)
+
+/* Wire Color Types, matching eV3DShadingColorType. */
+#define V3D_SHADING_SINGLE_COLOR 2
+#define V3D_SHADING_OBJECT_COLOR 4
+#define V3D_SHADING_RANDOM_COLOR 1
 
 /* ---- Opengl Depth conversion ---- */
 

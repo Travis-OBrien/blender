@@ -1,11 +1,11 @@
+/* SPDX-FileCopyrightText: 2017-2022 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma BLENDER_REQUIRE(common_view_lib.glsl)
 #pragma BLENDER_REQUIRE(common_math_lib.glsl)
 #pragma BLENDER_REQUIRE(common_hair_lib.glsl)
 #pragma BLENDER_REQUIRE(surface_lib.glsl)
-
-in vec3 pos;
-in vec3 nor;
 
 void main()
 {
@@ -73,7 +73,7 @@ int g_curves_attr_id = 0;
 int curves_attribute_element_id()
 {
   int id = hairStrandID;
-  if (drw_curves.is_point_attribute[g_curves_attr_id][0] != 0) {
+  if (drw_curves.is_point_attribute[g_curves_attr_id][0] != 0u) {
     id = hair_get_base_id();
   }
 

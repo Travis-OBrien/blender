@@ -1,3 +1,6 @@
+/* SPDX-FileCopyrightText: 2020-2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma BLENDER_REQUIRE(common_view_lib.glsl)
 #pragma BLENDER_REQUIRE(workbench_common_lib.glsl)
@@ -47,35 +50,36 @@ float calculate_transparent_weight(void)
 
 void main()
 {
-  /* Normal and Incident vector are in viewspace. Lighting is evaluated in viewspace. */
+  /* Normal and Incident vector are in view-space. Lighting is evaluated in view-space. */
   vec2 uv_viewport = gl_FragCoord.xy * world_data.viewport_size_inv;
   vec3 I = get_view_vector_from_screen_uv(uv_viewport);
   vec3 N = normalize(normal_interp);
 
   vec3 color = color_interp;
 
-#ifdef V3D_SHADING_TEXTURE_COLOR
+#ifdef WORKBENCH_COLOR_TEXTURE
   color = workbench_image_color(uv_interp);
 #endif
 
-#ifdef V3D_LIGHTING_MATCAP
-  vec3 shaded_color = get_matcap_lighting(matcap_diffuse_tx, matcap_specular_tx, color, N, I);
+#ifdef WORKBENCH_LIGHTING_MATCAP
+  vec3 shaded_color = get_matcap_lighting(matcap_tx, color, N, I);
 #endif
 
-#ifdef V3D_LIGHTING_STUDIO
+#ifdef WORKBENCH_LIGHTING_STUDIO
   vec3 shaded_color = get_world_lighting(color, _roughness, metallic, N, I);
 #endif
 
-#ifdef V3D_LIGHTING_FLAT
+#ifdef WORKBENCH_LIGHTING_FLAT
   vec3 shaded_color = color;
 #endif
 
   shaded_color *= get_shadow(N, forceShadowing);
 
   /* Listing 4 */
-  float weight = calculate_transparent_weight() * alpha_interp;
-  transparentAccum = vec4(shaded_color * weight, alpha_interp);
-  revealageAccum = vec4(weight);
+  float alpha = alpha_interp * world_data.xray_alpha;
+  float weight = calculate_transparent_weight() * alpha;
+  out_transparent_accum = vec4(shaded_color * weight, alpha);
+  out_revealage_accum = vec4(weight);
 
-  objectId = uint(object_id);
+  out_object_id = uint(object_id);
 }

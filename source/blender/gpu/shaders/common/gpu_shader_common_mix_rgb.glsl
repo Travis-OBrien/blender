@@ -1,3 +1,7 @@
+/* SPDX-FileCopyrightText: 2019-2022 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
+
 #pragma BLENDER_REQUIRE(gpu_shader_common_color_utils.glsl)
 
 void mix_blend(float fac, vec4 col1, vec4 col2, out vec4 outcol)
@@ -98,6 +102,12 @@ void mix_div_fallback(float fac, vec4 col1, vec4 col2, out vec4 outcol)
 void mix_diff(float fac, vec4 col1, vec4 col2, out vec4 outcol)
 {
   outcol = mix(col1, abs(col1 - col2), fac);
+  outcol.a = col1.a;
+}
+
+void mix_exclusion(float fac, vec4 col1, vec4 col2, out vec4 outcol)
+{
+  outcol = max(mix(col1, col1 + col2 - 2.0 * col1 * col2, fac), 0.0);
   outcol.a = col1.a;
 }
 

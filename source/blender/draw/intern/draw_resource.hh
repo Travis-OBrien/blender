@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later
- * Copyright 2022 Blender Foundation. */
+/* SPDX-FileCopyrightText: 2022 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma once
 
@@ -10,11 +11,13 @@
  * Each of them are reference by resource index (#ResourceHandle).
  */
 
-#include "BKE_curve.h"
+#include "BLI_math_matrix.hh"
+
+#include "BKE_curve.hh"
 #include "BKE_duplilist.h"
 #include "BKE_mesh.h"
-#include "BKE_object.h"
-#include "BKE_volume.h"
+#include "BKE_object.hh"
+#include "BKE_volume.hh"
 #include "BLI_hash.h"
 #include "DNA_curve_types.h"
 #include "DNA_layer_types.h"
@@ -31,14 +34,14 @@
 
 inline void ObjectMatrices::sync(const Object &object)
 {
-  model = object.object_to_world;
-  model_inverse = object.world_to_object;
+  model.view() = blender::float4x4_view(object.object_to_world);
+  model_inverse.view() = blender::float4x4_view(object.world_to_object);
 }
 
 inline void ObjectMatrices::sync(const float4x4 &model_matrix)
 {
   model = model_matrix;
-  model_inverse = model_matrix.inverted();
+  model_inverse = blender::math::invert(model_matrix);
 }
 
 inline std::ostream &operator<<(std::ostream &stream, const ObjectMatrices &matrices)
@@ -70,7 +73,7 @@ inline void ObjectInfos::sync(const blender::draw::ObjectRef ref, bool is_active
   object_attrs_len = 0;
   object_attrs_offset = 0;
 
-  color = ref.object->color;
+  ob_color = ref.object->color;
   index = ref.object->index;
   SET_FLAG_FROM_TEST(flag, is_active_object, eObjectInfoFlag::OBJECT_ACTIVE);
   SET_FLAG_FROM_TEST(
@@ -91,8 +94,6 @@ inline void ObjectInfos::sync(const blender::draw::ObjectRef ref, bool is_active
   else {
     random = ref.dupli_object->random_id * (1.0f / (float)0xFFFFFFFF);
   }
-  /* Default values. Set if needed. */
-  random = 0.0f;
 
   if (ref.object->data == nullptr) {
     orco_add = float3(0.0f);
@@ -102,9 +103,10 @@ inline void ObjectInfos::sync(const blender::draw::ObjectRef ref, bool is_active
 
   switch (GS(reinterpret_cast<ID *>(ref.object->data)->name)) {
     case ID_VO: {
-      BoundBox &bbox = *BKE_volume_boundbox_get(ref.object);
-      orco_add = (float3(bbox.vec[6]) + float3(bbox.vec[0])) * 0.5f; /* Center. */
-      orco_mul = float3(bbox.vec[6]) - float3(bbox.vec[0]);          /* Size. */
+      const blender::Bounds<float3> bounds = *BKE_volume_min_max(
+          static_cast<const Volume *>(ref.object->data));
+      orco_add = blender::math::midpoint(bounds.min, bounds.max);
+      orco_mul = (bounds.max - bounds.min) * 0.5f;
       break;
     }
     case ID_ME: {
@@ -114,14 +116,14 @@ inline void ObjectInfos::sync(const blender::draw::ObjectRef ref, bool is_active
     case ID_CU_LEGACY: {
       Curve &cu = *static_cast<Curve *>(ref.object->data);
       BKE_curve_texspace_ensure(&cu);
-      orco_add = cu.loc;
-      orco_mul = cu.size;
+      orco_add = cu.texspace_location;
+      orco_mul = cu.texspace_size;
       break;
     }
     case ID_MB: {
       MetaBall &mb = *static_cast<MetaBall *>(ref.object->data);
-      orco_add = mb.loc;
-      orco_mul = mb.size;
+      orco_add = mb.texspace_location;
+      orco_mul = mb.texspace_size;
       break;
     }
     default:
@@ -140,7 +142,7 @@ inline std::ostream &operator<<(std::ostream &stream, const ObjectInfos &infos)
   }
   stream << "orco_add=" << infos.orco_add << ", ";
   stream << "orco_mul=" << infos.orco_mul << ", ";
-  stream << "color=" << infos.color << ", ";
+  stream << "ob_color=" << infos.ob_color << ", ";
   stream << "index=" << infos.index << ", ";
   stream << "random=" << infos.random << ", ";
   stream << "flag=" << infos.flag << ")" << std::endl;
@@ -158,18 +160,30 @@ inline void ObjectBounds::sync()
   bounding_sphere.w = -1.0f; /* Disable test. */
 }
 
-inline void ObjectBounds::sync(Object &ob)
+inline void ObjectBounds::sync(const Object &ob, float inflate_bounds)
 {
-  const BoundBox *bbox = BKE_object_boundbox_get(&ob);
-  if (bbox == nullptr) {
+  const std::optional<blender::Bounds<float3>> bounds = BKE_object_boundbox_get(&ob);
+  if (!bounds) {
     bounding_sphere.w = -1.0f; /* Disable test. */
     return;
   }
-  *reinterpret_cast<float3 *>(&bounding_corners[0]) = bbox->vec[0];
-  *reinterpret_cast<float3 *>(&bounding_corners[1]) = bbox->vec[4];
-  *reinterpret_cast<float3 *>(&bounding_corners[2]) = bbox->vec[3];
-  *reinterpret_cast<float3 *>(&bounding_corners[3]) = bbox->vec[1];
+  BoundBox bbox;
+  BKE_boundbox_init_from_minmax(&bbox, bounds->min, bounds->max);
+  *reinterpret_cast<float3 *>(&bounding_corners[0]) = bbox.vec[0];
+  *reinterpret_cast<float3 *>(&bounding_corners[1]) = bbox.vec[4];
+  *reinterpret_cast<float3 *>(&bounding_corners[2]) = bbox.vec[3];
+  *reinterpret_cast<float3 *>(&bounding_corners[3]) = bbox.vec[1];
   bounding_sphere.w = 0.0f; /* Enable test. */
+
+  if (inflate_bounds != 0.0f) {
+    BLI_assert(inflate_bounds >= 0.0f);
+    float p = inflate_bounds;
+    float n = -inflate_bounds;
+    bounding_corners[0] += float4(n, n, n, 0.0f);
+    bounding_corners[1] += float4(p, n, n, 0.0f);
+    bounding_corners[2] += float4(n, p, n, 0.0f);
+    bounding_corners[3] += float4(n, n, p, 0.0f);
+  }
 }
 
 inline void ObjectBounds::sync(const float3 &center, const float3 &size)

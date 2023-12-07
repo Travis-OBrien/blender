@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma once
 
@@ -19,6 +21,7 @@
  */
 
 #include "BLI_map.hh"
+#include "BLI_struct_equality_utils.hh"
 #include "BLI_vector.hh"
 
 namespace blender {
@@ -150,6 +153,13 @@ template<typename Key, typename Value> class MultiValueMap {
   {
     map_.clear();
   }
+
+  void clear_and_shrink()
+  {
+    map_.clear_and_shrink();
+  }
+
+  BLI_STRUCT_EQUALITY_OPERATORS_1(MultiValueMap, map_)
 };
 
 }  // namespace blender

@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later
- * Copyright 2020 Blender Foundation. All rights reserved. */
+/* SPDX-FileCopyrightText: 2020 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /** \file
  * \ingroup gpu
@@ -29,6 +30,7 @@ class GLUniformBuf : public UniformBuf {
   ~GLUniformBuf();
 
   void update(const void *data) override;
+  void clear_to_zero() override;
   void bind(int slot) override;
   void bind_as_ssbo(int slot) override;
   void unbind() override;

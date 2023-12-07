@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later
- * Copyright 2022 Blender Foundation. */
+/* SPDX-FileCopyrightText: 2022 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma once
 
@@ -20,6 +21,12 @@
 #include "draw_handle.hh"
 #include "draw_state.h"
 #include "draw_view.hh"
+
+/* Forward declarations. */
+namespace blender::draw::detail {
+template<typename T, int64_t block_size> class SubPassVector;
+template<typename DrawCommandBufType> class PassBase;
+}  // namespace blender::draw::detail
 
 namespace blender::draw::command {
 
@@ -93,6 +100,7 @@ enum class Type : uint8_t {
   PushConstant,
   ResourceBind,
   ShaderBind,
+  SubPassTransition,
   StateSet,
   StencilSet,
 
@@ -127,8 +135,18 @@ struct FramebufferBind {
   std::string serialize() const;
 };
 
+struct SubPassTransition {
+  /** \note uint8_t storing `GPUAttachmentState` for compactness. */
+  uint8_t depth_state;
+  /** \note 8 is GPU_FB_MAX_COLOR_ATTACHMENT. */
+  uint8_t color_states[8];
+
+  void execute() const;
+  std::string serialize() const;
+};
+
 struct ResourceBind {
-  eGPUSamplerState sampler;
+  GPUSamplerState sampler;
   int slot;
   bool is_reference;
 
@@ -138,6 +156,9 @@ struct ResourceBind {
     Image,
     UniformBuf,
     StorageBuf,
+    UniformAsStorageBuf,
+    VertexAsStorageBuf,
+    IndexAsStorageBuf,
   } type;
 
   union {
@@ -152,6 +173,8 @@ struct ResourceBind {
     GPUTexture **texture_ref;
     GPUVertBuf *vertex_buf;
     GPUVertBuf **vertex_buf_ref;
+    GPUIndexBuf *index_buf;
+    GPUIndexBuf **index_buf_ref;
   };
 
   ResourceBind() = default;
@@ -164,13 +187,25 @@ struct ResourceBind {
       : slot(slot_), is_reference(false), type(Type::StorageBuf), storage_buf(res){};
   ResourceBind(int slot_, GPUStorageBuf **res)
       : slot(slot_), is_reference(true), type(Type::StorageBuf), storage_buf_ref(res){};
+  ResourceBind(int slot_, GPUUniformBuf *res, Type /*type*/)
+      : slot(slot_), is_reference(false), type(Type::UniformAsStorageBuf), uniform_buf(res){};
+  ResourceBind(int slot_, GPUUniformBuf **res, Type /*type*/)
+      : slot(slot_), is_reference(true), type(Type::UniformAsStorageBuf), uniform_buf_ref(res){};
+  ResourceBind(int slot_, GPUVertBuf *res, Type /*type*/)
+      : slot(slot_), is_reference(false), type(Type::VertexAsStorageBuf), vertex_buf(res){};
+  ResourceBind(int slot_, GPUVertBuf **res, Type /*type*/)
+      : slot(slot_), is_reference(true), type(Type::VertexAsStorageBuf), vertex_buf_ref(res){};
+  ResourceBind(int slot_, GPUIndexBuf *res, Type /*type*/)
+      : slot(slot_), is_reference(false), type(Type::IndexAsStorageBuf), index_buf(res){};
+  ResourceBind(int slot_, GPUIndexBuf **res, Type /*type*/)
+      : slot(slot_), is_reference(true), type(Type::IndexAsStorageBuf), index_buf_ref(res){};
   ResourceBind(int slot_, draw::Image *res)
       : slot(slot_), is_reference(false), type(Type::Image), texture(draw::as_texture(res)){};
   ResourceBind(int slot_, draw::Image **res)
       : slot(slot_), is_reference(true), type(Type::Image), texture_ref(draw::as_texture(res)){};
-  ResourceBind(int slot_, GPUTexture *res, eGPUSamplerState state)
+  ResourceBind(int slot_, GPUTexture *res, GPUSamplerState state)
       : sampler(state), slot(slot_), is_reference(false), type(Type::Sampler), texture(res){};
-  ResourceBind(int slot_, GPUTexture **res, eGPUSamplerState state)
+  ResourceBind(int slot_, GPUTexture **res, GPUSamplerState state)
       : sampler(state), slot(slot_), is_reference(true), type(Type::Sampler), texture_ref(res){};
   ResourceBind(int slot_, GPUVertBuf *res)
       : slot(slot_), is_reference(false), type(Type::BufferSampler), vertex_buf(res){};
@@ -267,6 +302,11 @@ struct Draw {
   uint vertex_len;
   uint vertex_first;
   ResourceHandle handle;
+#ifdef WITH_METAL_BACKEND
+  /* Shader is required for extracting SSBO vertex fetch expansion parameters during draw command
+   * generation. */
+  GPUShader *shader;
+#endif
 
   void execute(RecordingState &state) const;
   std::string serialize() const;
@@ -361,6 +401,7 @@ union Undetermined {
   ShaderBind shader_bind;
   ResourceBind resource_bind;
   FramebufferBind framebuffer_bind;
+  SubPassTransition subpass_transition;
   PushConstant push_constant;
   Draw draw;
   DrawMulti draw_multi;
@@ -375,7 +416,7 @@ union Undetermined {
 };
 
 /** Try to keep the command size as low as possible for performance. */
-BLI_STATIC_ASSERT(sizeof(Undetermined) <= 24, "One of the command type is too large.")
+BLI_STATIC_ASSERT(sizeof(Undetermined) <= /*24*/ 32, "One of the command type is too large.")
 
 /** \} */
 
@@ -394,6 +435,7 @@ class DrawCommandBuf {
 
  private:
   using ResourceIdBuf = StorageArrayBuffer<uint, 128, false>;
+  using SubPassVector = detail::SubPassVector<detail::PassBase<DrawCommandBuf>, 16>;
 
   /** Array of resource id. One per instance. Generated on GPU and send to GPU. */
   ResourceIdBuf resource_id_buf_;
@@ -401,7 +443,10 @@ class DrawCommandBuf {
   uint resource_id_count_ = 0;
 
  public:
-  void clear(){};
+  void clear()
+  {
+    resource_id_buf_.trim_to_next_power_of_2(resource_id_count_);
+  };
 
   void append_draw(Vector<Header, 0> &headers,
                    Vector<Undetermined, 0> &commands,
@@ -409,17 +454,42 @@ class DrawCommandBuf {
                    uint instance_len,
                    uint vertex_len,
                    uint vertex_first,
-                   ResourceHandle handle)
+                   ResourceHandle handle,
+                   uint /*custom_id*/
+#ifdef WITH_METAL_BACKEND
+                   ,
+                   GPUShader *shader = nullptr
+#endif
+  )
   {
     vertex_first = vertex_first != -1 ? vertex_first : 0;
     instance_len = instance_len != -1 ? instance_len : 1;
 
     int64_t index = commands.append_and_get_index({});
     headers.append({Type::Draw, uint(index)});
-    commands[index].draw = {batch, instance_len, vertex_len, vertex_first, handle};
+    commands[index].draw = {batch,
+                            instance_len,
+                            vertex_len,
+                            vertex_first,
+                            handle
+#ifdef WITH_METAL_BACKEND
+                            ,
+                            shader
+#endif
+    };
   }
 
-  void bind(RecordingState &state, Vector<Header, 0> &headers, Vector<Undetermined, 0> &commands);
+  void bind(RecordingState &state,
+            Vector<Header, 0> &headers,
+            Vector<Undetermined, 0> &commands,
+            SubPassVector &sub_passes);
+
+ private:
+  static void finalize_commands(Vector<Header, 0> &headers,
+                                Vector<Undetermined, 0> &commands,
+                                SubPassVector &sub_passes,
+                                uint &resource_id_count,
+                                ResourceIdBuf &resource_id_buf);
 };
 
 /** \} */
@@ -487,6 +557,11 @@ class DrawMultiBuf {
  public:
   void clear()
   {
+    group_buf_.trim_to_next_power_of_2(group_count_);
+    /* Two commands per group (inverted and non-inverted scale). */
+    command_buf_.trim_to_next_power_of_2(group_count_ * 2);
+    prototype_buf_.trim_to_next_power_of_2(prototype_count_);
+    resource_id_buf_.trim_to_next_power_of_2(resource_id_count_);
     header_id_counter_ = 0;
     group_count_ = 0;
     prototype_count_ = 0;
@@ -499,7 +574,13 @@ class DrawMultiBuf {
                    uint instance_len,
                    uint vertex_len,
                    uint vertex_first,
-                   ResourceHandle handle)
+                   ResourceHandle handle,
+                   uint custom_id
+#ifdef WITH_METAL_BACKEND
+                   ,
+                   GPUShader *shader
+#endif
+  )
   {
     /* Custom draw-calls cannot be batched and will produce one group per draw. */
     const bool custom_group = ((vertex_first != 0 && vertex_first != -1) || vertex_len != -1);
@@ -521,6 +602,7 @@ class DrawMultiBuf {
 
     DrawPrototype &draw = prototype_buf_.get_or_resize(prototype_count_++);
     draw.resource_handle = handle.raw;
+    draw.custom_id = custom_id;
     draw.instance_len = instance_len;
     draw.group_id = group_id;
 
@@ -537,6 +619,11 @@ class DrawMultiBuf {
       group.back_proto_len = 0;
       group.vertex_len = vertex_len;
       group.vertex_first = vertex_first;
+#ifdef WITH_METAL_BACKEND
+      /* If SSBO vertex fetch is used, shader must be known to extract vertex expansion parameters.
+       */
+      group.gpu_shader = shader;
+#endif
       /* Custom group are not to be registered in the group_ids_. */
       if (!custom_group) {
         group_id = new_group_id;
@@ -550,6 +637,11 @@ class DrawMultiBuf {
       DrawGroup &group = group_buf_[group_id];
       group.len += instance_len;
       group.front_facing_len += inverted ? 0 : instance_len;
+#ifdef WITH_METAL_BACKEND
+      /* If SSBO vertex fetch is used, shader must be known to extract vertex expansion parameters.
+       */
+      group.gpu_shader = shader;
+#endif
       /* For serialization only. */
       (inverted ? group.back_proto_len : group.front_proto_len)++;
     }
@@ -560,7 +652,8 @@ class DrawMultiBuf {
             Vector<Undetermined, 0> &commands,
             VisibilityBuf &visibility_buf,
             int visibility_word_per_draw,
-            int view_len);
+            int view_len,
+            bool use_custom_ids);
 };
 
 /** \} */

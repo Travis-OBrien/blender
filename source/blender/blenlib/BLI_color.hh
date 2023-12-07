@@ -1,10 +1,13 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma once
 
-#include <iostream>
+#include <ostream>
 
 #include "BLI_math_color.h"
+#include "BLI_struct_equality_utils.hh"
 
 namespace blender {
 
@@ -116,17 +119,7 @@ template<typename ChannelStorageType, eSpace Space, eAlpha Alpha> class ColorRGB
     return stream;
   }
 
-  friend bool operator==(const ColorRGBA<ChannelStorageType, Space, Alpha> &a,
-                         const ColorRGBA<ChannelStorageType, Space, Alpha> &b)
-  {
-    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
-  }
-
-  friend bool operator!=(const ColorRGBA<ChannelStorageType, Space, Alpha> &a,
-                         const ColorRGBA<ChannelStorageType, Space, Alpha> &b)
-  {
-    return !(a == b);
-  }
+  BLI_STRUCT_EQUALITY_OPERATORS_4(ColorRGBA, r, g, b, a)
 
   uint64_t hash() const
   {
@@ -152,9 +145,7 @@ BLI_INLINE ColorTheme4<uint8_t> BLI_color_convert_to_theme4b(const ColorTheme4<f
 template<eAlpha Alpha>
 class ColorSceneLinear4f final : public ColorRGBA<float, eSpace::SceneLinear, Alpha> {
  public:
-  constexpr ColorSceneLinear4f<Alpha>() : ColorRGBA<float, eSpace::SceneLinear, Alpha>()
-  {
-  }
+  constexpr ColorSceneLinear4f<Alpha>() = default;
 
   constexpr ColorSceneLinear4f<Alpha>(const float *rgba)
       : ColorRGBA<float, eSpace::SceneLinear, Alpha>(rgba)
@@ -250,7 +241,7 @@ class ColorSceneLinearByteEncoded4b final
 template<typename ChannelStorageType>
 class ColorTheme4 final : public ColorRGBA<ChannelStorageType, eSpace::Theme, eAlpha::Straight> {
  public:
-  constexpr ColorTheme4() : ColorRGBA<ChannelStorageType, eSpace::Theme, eAlpha::Straight>(){};
+  constexpr ColorTheme4() = default;
 
   constexpr ColorTheme4(const ChannelStorageType *rgba)
       : ColorRGBA<ChannelStorageType, eSpace::Theme, eAlpha::Straight>(rgba)

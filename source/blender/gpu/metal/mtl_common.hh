@@ -1,15 +1,16 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #ifndef __MTL_COMMON
 #define __MTL_COMMON
 
 /** -- Renderer Options -- */
 /* Number of frames over which rolling averages are taken. */
-#define MTL_FRAME_AVERAGE_COUNT 5
+#define MTL_FRAME_AVERAGE_COUNT 15
 #define MTL_MAX_DRAWABLES 3
 #define MTL_MAX_SET_BYTES_SIZE 4096
 #define MTL_FORCE_WAIT_IDLE 0
-#define MTL_MAX_COMMAND_BUFFERS 64
 
 /* Number of frames for which we retain in-flight resources such as scratch buffers.
  * Set as number of GPU frames in flight, plus an additional value for extra possible CPU frame. */

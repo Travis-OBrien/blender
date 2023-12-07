@@ -1,11 +1,13 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma once
 
 #include <cstdint>
 
-#include "BLI_float3x3.hh"
-#include "BLI_math_vec_types.hh"
+#include "BLI_math_matrix_types.hh"
+#include "BLI_math_vector_types.hh"
 
 namespace blender::realtime_compositor {
 
@@ -21,8 +23,8 @@ enum class Interpolation : uint8_t {
  * Realization Options
  *
  * The options that describe how an input result prefer to be realized on some other domain. This
- * is used by the Realize On Domain Operation to identify the appropriate method of realization.
- * See the Domain class for more information. */
+ * is used by the Realize On Domain and Transform algorithms to identify the appropriate method of
+ * realization. See the Domain class for more information. */
 struct RealizationOptions {
   /* The interpolation method that should be used when performing realization. Since realizing a
    * result involves projecting it on a different domain, which in turn, involves sampling the
@@ -32,11 +34,11 @@ struct RealizationOptions {
   /* If true, the result will be repeated infinitely along the horizontal axis when realizing the
    * result. If false, regions outside of bounds of the result along the horizontal axis will be
    * filled with zeros. */
-  bool repeat_x = false;
+  bool wrap_x = false;
   /* If true, the result will be repeated infinitely along the vertical axis when realizing the
    * result. If false, regions outside of bounds of the result along the vertical axis will be
    * filled with zeros. */
-  bool repeat_y = false;
+  bool wrap_y = false;
 };
 
 /* ------------------------------------------------------------------------------------------------
@@ -143,9 +145,9 @@ class Domain {
 
  public:
   /* A size only constructor that sets the transformation to identity. */
-  Domain(int2 size);
+  Domain(const int2 &size);
 
-  Domain(int2 size, float3x3 transformation);
+  Domain(const int2 &size, const float3x3 &transformation);
 
   /* Transform the domain by the given transformation. This effectively pre-multiply the given
    * transformation by the current transformation of the domain. */

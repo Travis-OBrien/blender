@@ -1,4 +1,8 @@
-#pragma BLENDER_REQUIRE(common_math_lib.glsl)
+/* SPDX-FileCopyrightText: 2022-2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
+
+#pragma BLENDER_REQUIRE(gpu_shader_math_base_lib.glsl)
 
 #define CRYPTOMATTE_LEVELS_MAX 16
 
@@ -45,7 +49,7 @@ void cryptomatte_normalize_weight(float total_weight, inout vec2 samples[CRYPTOM
   }
 }
 
-void cryptomatte_store_samples(ivec2 texel, int layer, in vec2 samples[CRYPTOMATTE_LEVELS_MAX])
+void cryptomatte_store_samples(ivec2 texel, int layer, vec2 samples[CRYPTOMATTE_LEVELS_MAX])
 {
   int pass_len = divide_ceil(cryptomatte_samples_per_layer, 2);
   int layer_id = layer * pass_len;

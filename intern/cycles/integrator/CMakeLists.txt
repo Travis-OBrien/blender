@@ -1,15 +1,20 @@
+# SPDX-FileCopyrightText: 2011-2022 Blender Foundation
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2011-2022 Blender Foundation
 
 set(INC
   ..
 )
 
+set(INC_SYS
+)
+
 set(SRC
   adaptive_sampling.cpp
   denoiser.cpp
-  denoiser_device.cpp
+  denoiser_gpu.cpp
   denoiser_oidn.cpp
+  denoiser_oidn_gpu.cpp
   denoiser_optix.cpp
   path_trace.cpp
   tile.cpp
@@ -30,9 +35,11 @@ set(SRC
 set(SRC_HEADERS
   adaptive_sampling.h
   denoiser.h
-  denoiser_device.h
+  denoiser_gpu.h
   denoiser_oidn.h
+  denoiser_oidn_gpu.h
   denoiser_optix.h
+  guiding.h
   path_trace.h
   tile.h
   pass_accessor.h

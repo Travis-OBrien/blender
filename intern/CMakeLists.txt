@@ -1,5 +1,6 @@
+# SPDX-FileCopyrightText: 2006 Blender Authors
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Copyright 2006 Blender Foundation. All rights reserved.
 
 # add_subdirectory(atomic)  # header only
 add_subdirectory(atomic)
@@ -42,10 +43,7 @@ if(WITH_BULLET)
   add_subdirectory(rigidbody)
 endif()
 
-# only windows needs utf16 converter
-if(WIN32)
-  add_subdirectory(utfconv)
-endif()
+add_subdirectory(utfconv)
 
 if(WITH_MOD_FLUID)
   add_subdirectory(mantaflow)
@@ -65,6 +63,10 @@ endif()
 
 if(UNIX AND NOT APPLE)
   add_subdirectory(libc_compat)
+endif()
+
+if(WITH_RENDERDOC)
+  add_subdirectory(renderdoc_dynload)
 endif()
 
 if(UNIX AND NOT APPLE)

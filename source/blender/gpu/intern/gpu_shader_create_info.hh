@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later
- * Copyright 2021 Blender Foundation. All rights reserved. */
+/* SPDX-FileCopyrightText: 2021 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /** \file
  * \ingroup gpu
@@ -21,8 +22,8 @@
 
 namespace blender::gpu::shader {
 
-#ifndef GPU_SHADER_CREATE_INFO
 /* Helps intellisense / auto-completion. */
+#ifndef GPU_SHADER_CREATE_INFO
 #  define GPU_SHADER_INTERFACE_INFO(_interface, _inst_name) \
     StageInterfaceInfo _interface(#_interface, _inst_name); \
     _interface
@@ -62,7 +63,15 @@ enum class Type {
   CHAR,
   CHAR2,
   CHAR3,
-  CHAR4
+  CHAR4,
+  USHORT,
+  USHORT2,
+  USHORT3,
+  USHORT4,
+  SHORT,
+  SHORT2,
+  SHORT3,
+  SHORT4
 };
 
 /* All of these functions is a bit out of place */
@@ -136,6 +145,22 @@ static inline std::ostream &operator<<(std::ostream &stream, const Type type)
       return stream << "uvec3";
     case Type::UVEC4:
       return stream << "uvec4";
+    case Type::USHORT:
+      return stream << "ushort";
+    case Type::USHORT2:
+      return stream << "ushort2";
+    case Type::USHORT3:
+      return stream << "ushort3";
+    case Type::USHORT4:
+      return stream << "ushort4";
+    case Type::SHORT:
+      return stream << "short";
+    case Type::SHORT2:
+      return stream << "short2";
+    case Type::SHORT3:
+      return stream << "short3";
+    case Type::SHORT4:
+      return stream << "short4";
     default:
       BLI_assert(0);
       return stream;
@@ -177,6 +202,14 @@ enum class BuiltinBits {
   VERTEX_ID = (1 << 14),
   WORK_GROUP_ID = (1 << 15),
   WORK_GROUP_SIZE = (1 << 16),
+  /**
+   * Allow setting the target viewport when using multi viewport feature.
+   * \note Emulated through geometry shader on older hardware.
+   */
+  VIEWPORT_INDEX = (1 << 17),
+
+  /* Texture atomics requires usage options to alter compilation flag. */
+  TEXTURE_ATOMIC = (1 << 18),
 
   /* Not a builtin but a flag we use to tag shaders that use the debug features. */
   USE_DEBUG_DRAW = (1 << 29),
@@ -189,10 +222,11 @@ ENUM_OPERATORS(BuiltinBits, BuiltinBits::USE_DEBUG_PRINT);
  * https://www.khronos.org/registry/OpenGL/extensions/ARB/ARB_conservative_depth.txt
  */
 enum class DepthWrite {
-  ANY = 0,
+  /* UNCHANGED specified as default to indicate gl_FragDepth is not used. */
+  UNCHANGED = 0,
+  ANY,
   GREATER,
   LESS,
-  UNCHANGED,
 };
 
 /* Samplers & images. */
@@ -290,8 +324,10 @@ struct StageInterfaceInfo {
   };
 
   StringRefNull name;
-  /** Name of the instance of the block (used to access).
-   *  Can be empty string (i.e: "") only if not using geometry shader. */
+  /**
+   * Name of the instance of the block (used to access).
+   * Can be empty string (i.e: "") only if not using geometry shader.
+   */
   StringRefNull instance_name;
   /** List of all members of the interface. */
   Vector<InOut> inouts;
@@ -343,7 +379,10 @@ struct ShaderCreateInfo {
   /** If true, force the use of the GL shader introspection for resource location. */
   bool legacy_resource_location_ = false;
   /** Allow optimization when fragment shader writes to `gl_FragDepth`. */
-  DepthWrite depth_write_ = DepthWrite::ANY;
+  DepthWrite depth_write_ = DepthWrite::UNCHANGED;
+  /** GPU Backend compatibility flag. Temporary requirement until Metal enablement is fully
+   * complete. */
+  bool metal_backend_only_ = false;
   /**
    * Maximum length of all the resource names including each null terminator.
    * Only for names used by #gpu::ShaderInterface.
@@ -376,7 +415,7 @@ struct ShaderCreateInfo {
     Type type;
     StringRefNull name;
 
-    bool operator==(const VertIn &b)
+    bool operator==(const VertIn &b) const
     {
       TEST_EQUAL(*this, b, index);
       TEST_EQUAL(*this, b, type);
@@ -424,21 +463,27 @@ struct ShaderCreateInfo {
     Type type;
     DualBlend blend;
     StringRefNull name;
+    /* Note: Currently only supported by Metal. */
+    int raster_order_group;
 
-    bool operator==(const FragOut &b)
+    bool operator==(const FragOut &b) const
     {
       TEST_EQUAL(*this, b, index);
       TEST_EQUAL(*this, b, type);
       TEST_EQUAL(*this, b, blend);
       TEST_EQUAL(*this, b, name);
+      TEST_EQUAL(*this, b, raster_order_group);
       return true;
     }
   };
   Vector<FragOut> fragment_outputs_;
 
+  using SubpassIn = FragOut;
+  Vector<SubpassIn> subpass_inputs_;
+
   struct Sampler {
     ImageType type;
-    eGPUSamplerState sampler;
+    GPUSamplerState sampler;
     StringRefNull name;
   };
 
@@ -479,7 +524,7 @@ struct ShaderCreateInfo {
 
     Resource(BindType type, int _slot) : bind_type(type), slot(_slot){};
 
-    bool operator==(const Resource &b)
+    bool operator==(const Resource &b) const
     {
       TEST_EQUAL(*this, b, bind_type);
       TEST_EQUAL(*this, b, slot);
@@ -524,7 +569,7 @@ struct ShaderCreateInfo {
     StringRefNull name;
     int array_size;
 
-    bool operator==(const PushConst &b)
+    bool operator==(const PushConst &b) const
     {
       TEST_EQUAL(*this, b, type);
       TEST_EQUAL(*this, b, name);
@@ -546,6 +591,10 @@ struct ShaderCreateInfo {
    * No data slot must overlap otherwise we throw an error.
    */
   Vector<StringRefNull> additional_infos_;
+
+  /* Transform feedback properties. */
+  eGPUShaderTFBType tf_type_ = GPU_SHADER_TFB_NONE;
+  Vector<const char *> tf_names_;
 
  public:
   ShaderCreateInfo(const char *name) : name_(name){};
@@ -618,9 +667,33 @@ struct ShaderCreateInfo {
     return *(Self *)this;
   }
 
-  Self &fragment_out(int slot, Type type, StringRefNull name, DualBlend blend = DualBlend::NONE)
+  Self &fragment_out(int slot,
+                     Type type,
+                     StringRefNull name,
+                     DualBlend blend = DualBlend::NONE,
+                     int raster_order_group = -1)
   {
-    fragment_outputs_.append({slot, type, blend, name});
+    fragment_outputs_.append({slot, type, blend, name, raster_order_group});
+    return *(Self *)this;
+  }
+
+  /**
+   * Allows to fetch frame-buffer values from previous render sub-pass.
+   *
+   * On Apple Silicon, the additional `raster_order_group` is there to set the sub-pass
+   * dependencies. Any sub-pass input need to have the same `raster_order_group` defined in the
+   * shader writing them.
+   *
+   * IMPORTANT: Currently emulated on all backend except Metal. This is only for debugging purpose
+   * as it is too slow to be viable.
+   *
+   * TODO(fclem): Vulkan can implement that using `subpassInput`. However sub-pass boundaries might
+   * be difficult to inject implicitly and will require more high level changes.
+   * TODO(fclem): OpenGL can emulate that using `GL_EXT_shader_framebuffer_fetch`.
+   */
+  Self &subpass_in(int slot, Type type, StringRefNull name, int raster_order_group = -1)
+  {
+    subpass_inputs_.append({slot, type, DualBlend::NONE, name, raster_order_group});
     return *(Self *)this;
   }
 
@@ -679,7 +752,7 @@ struct ShaderCreateInfo {
                 ImageType type,
                 StringRefNull name,
                 Frequency freq = Frequency::PASS,
-                eGPUSamplerState sampler = (eGPUSamplerState)-1)
+                GPUSamplerState sampler = GPUSamplerState::internal_sampler())
   {
     Resource res(Resource::BindType::SAMPLER, slot);
     res.sampler.type = type;
@@ -732,6 +805,8 @@ struct ShaderCreateInfo {
 
   Self &push_constant(Type type, StringRefNull name, int array_size = 0)
   {
+    /* We don't have support for UINT push constants yet, use INT instead.*/
+    BLI_assert(type != Type::UINT);
     BLI_assert_msg(name.find("[") == -1,
                    "Array syntax is forbidden for push constants."
                    "Use the array_size parameter instead.");
@@ -789,6 +864,12 @@ struct ShaderCreateInfo {
     return *(Self *)this;
   }
 
+  Self &metal_backend_only(bool flag)
+  {
+    metal_backend_only_ = flag;
+    return *(Self *)this;
+  }
+
   /** \} */
 
   /* -------------------------------------------------------------------- */
@@ -829,6 +910,27 @@ struct ShaderCreateInfo {
   /** \} */
 
   /* -------------------------------------------------------------------- */
+  /** \name Transform feedback properties
+   *
+   * Transform feedback enablement and output binding assignment.
+   * \{ */
+
+  Self &transform_feedback_mode(eGPUShaderTFBType tf_mode)
+  {
+    BLI_assert(tf_mode != GPU_SHADER_TFB_NONE);
+    tf_type_ = tf_mode;
+    return *(Self *)this;
+  }
+
+  Self &transform_feedback_output_name(const char *name)
+  {
+    BLI_assert(tf_type_ != GPU_SHADER_TFB_NONE);
+    tf_names_.append(name);
+    return *(Self *)this;
+  }
+  /** \} */
+
+  /* -------------------------------------------------------------------- */
   /** \name Recursive evaluation.
    *
    * Flatten all dependency so that this descriptor contains all the data from the additional
@@ -839,6 +941,7 @@ struct ShaderCreateInfo {
   void finalize();
 
   std::string check_error() const;
+  bool is_vulkan_compatible() const;
 
   /** Error detection that some backend compilers do not complain about. */
   void validate_merge(const ShaderCreateInfo &other_info);
@@ -851,8 +954,8 @@ struct ShaderCreateInfo {
    *
    * \{ */
 
-  /* Comparison operator for GPUPass cache. We only compare if it will create the same shader code.
-   * So we do not compare name and some other internal stuff. */
+  /* Comparison operator for GPUPass cache. We only compare if it will create the same shader
+   * code. So we do not compare name and some other internal stuff. */
   bool operator==(const ShaderCreateInfo &b)
   {
     TEST_EQUAL(*this, b, builtins_);
@@ -870,6 +973,7 @@ struct ShaderCreateInfo {
     TEST_VECTOR_EQUAL(*this, b, geometry_out_interfaces_);
     TEST_VECTOR_EQUAL(*this, b, push_constants_);
     TEST_VECTOR_EQUAL(*this, b, typedef_sources_);
+    TEST_VECTOR_EQUAL(*this, b, subpass_inputs_);
     TEST_EQUAL(*this, b, vertex_source_);
     TEST_EQUAL(*this, b, geometry_source_);
     TEST_EQUAL(*this, b, fragment_source_);
@@ -931,11 +1035,6 @@ struct ShaderCreateInfo {
   bool has_resource_image() const
   {
     return has_resource_type(Resource::BindType::IMAGE);
-  }
-
-  bool has_resource_storage() const
-  {
-    return has_resource_type(Resource::BindType::STORAGE_BUFFER);
   }
 
   /** \} */

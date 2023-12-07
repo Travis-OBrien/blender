@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma once
 
@@ -72,7 +74,7 @@ template<
      * The equality operator used to compare keys. By default it will simply compare keys using the
      * `==` operator.
      */
-    typename IsEqual = DefaultEquality,
+    typename IsEqual = DefaultEquality<Key>,
     /**
      * This is what will actually be stored in the hash table array. At a minimum a slot has to be
      * able to hold an array index and information about whether the slot is empty, occupied or
@@ -163,9 +165,7 @@ class VectorSet {
   {
   }
 
-  VectorSet(NoExceptConstructor, Allocator allocator = {}) : VectorSet(allocator)
-  {
-  }
+  VectorSet(NoExceptConstructor, Allocator allocator = {}) : VectorSet(allocator) {}
 
   VectorSet(Span<Key> keys, Allocator allocator = {}) : VectorSet(NoExceptConstructor(), allocator)
   {
@@ -349,13 +349,14 @@ class VectorSet {
   }
 
   /**
-   * Remove all values for which the given predicate is true. This may change the order of elements
-   * in the vector.
+   * Remove all values for which the given predicate is true and return the number or values
+   * removed. This may change the order of elements in the vector.
    *
    * This is similar to std::erase_if.
    */
-  template<typename Predicate> void remove_if(Predicate &&predicate)
+  template<typename Predicate> int64_t remove_if(Predicate &&predicate)
   {
+    const int64_t prev_size = this->size();
     for (Slot &slot : slots_) {
       if (slot.is_occupied()) {
         const int64_t index = slot.index();
@@ -365,6 +366,7 @@ class VectorSet {
         }
       }
     }
+    return prev_size - this->size();
   }
 
   /**
@@ -480,7 +482,7 @@ class VectorSet {
   /**
    * Print common statistics like size and collision count. This is useful for debugging purposes.
    */
-  void print_stats(StringRef name = "") const
+  void print_stats(const char *name) const
   {
     HashTableStats stats(*this, this->as_span());
     stats.print(name);
@@ -558,6 +560,15 @@ class VectorSet {
 
     removed_slots_ = 0;
     occupied_and_removed_slots_ = 0;
+  }
+
+  /**
+   * Removes all keys from the set and frees any allocated memory.
+   */
+  void clear_and_shrink()
+  {
+    std::destroy_at(this);
+    new (this) VectorSet(NoExceptConstructor{});
   }
 
   /**
@@ -678,7 +689,9 @@ class VectorSet {
     VECTOR_SET_SLOT_PROBING_BEGIN (hash, slot) {
       if (slot.is_empty()) {
         int64_t index = this->size();
-        new (keys_ + index) Key(std::forward<ForwardKey>(key));
+        Key *dst = keys_ + index;
+        new (dst) Key(std::forward<ForwardKey>(key));
+        BLI_assert(hash_(*dst) == hash);
         slot.occupy(index, hash);
         occupied_and_removed_slots_++;
         return;
@@ -694,7 +707,9 @@ class VectorSet {
     VECTOR_SET_SLOT_PROBING_BEGIN (hash, slot) {
       if (slot.is_empty()) {
         int64_t index = this->size();
-        new (keys_ + index) Key(std::forward<ForwardKey>(key));
+        Key *dst = keys_ + index;
+        new (dst) Key(std::forward<ForwardKey>(key));
+        BLI_assert(hash_(*dst) == hash);
         slot.occupy(index, hash);
         occupied_and_removed_slots_++;
         return true;
@@ -744,7 +759,9 @@ class VectorSet {
       }
       if (slot.is_empty()) {
         const int64_t index = this->size();
-        new (keys_ + index) Key(std::forward<ForwardKey>(key));
+        Key *dst = keys_ + index;
+        new (dst) Key(std::forward<ForwardKey>(key));
+        BLI_assert(hash_(*dst) == hash);
         slot.occupy(index, hash);
         occupied_and_removed_slots_++;
         return index;
@@ -874,7 +891,7 @@ class VectorSet {
 template<typename Key,
          typename ProbingStrategy = DefaultProbingStrategy,
          typename Hash = DefaultHash<Key>,
-         typename IsEqual = DefaultEquality,
+         typename IsEqual = DefaultEquality<Key>,
          typename Slot = typename DefaultVectorSetSlot<Key>::type>
 using RawVectorSet = VectorSet<Key, ProbingStrategy, Hash, IsEqual, Slot, RawAllocator>;
 

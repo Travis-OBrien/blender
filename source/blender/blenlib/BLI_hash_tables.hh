@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma once
 
@@ -12,11 +14,7 @@
 #include <cmath>
 
 #include "BLI_allocator.hh"
-#include "BLI_array.hh"
-#include "BLI_math_base.h"
 #include "BLI_memory_utils.hh"
-#include "BLI_string.h"
-#include "BLI_string_ref.hh"
 #include "BLI_utildefines.h"
 #include "BLI_vector.hh"
 
@@ -301,26 +299,7 @@ class HashTableStats {
     removed_load_factor_ = (float)removed_amount_ / (float)capacity_;
   }
 
-  void print(StringRef name = "")
-  {
-    std::cout << "Hash Table Stats: " << name << "\n";
-    std::cout << "  Address: " << address_ << "\n";
-    std::cout << "  Total Slots: " << capacity_ << "\n";
-    std::cout << "  Occupied Slots:  " << size_ << " (" << load_factor_ * 100.0f << " %)\n";
-    std::cout << "  Removed Slots: " << removed_amount_ << " (" << removed_load_factor_ * 100.0f
-              << " %)\n";
-
-    char memory_size_str[15];
-    BLI_str_format_byte_unit(memory_size_str, size_in_bytes_, true);
-    std::cout << "  Size: ~" << memory_size_str << "\n";
-    std::cout << "  Size per Slot: " << size_per_element_ << " bytes\n";
-
-    std::cout << "  Average Collisions: " << average_collisions_ << "\n";
-    for (int64_t collision_count : keys_by_collision_count_.index_range()) {
-      std::cout << "  " << collision_count
-                << " Collisions: " << keys_by_collision_count_[collision_count] << "\n";
-    }
-  }
+  void print(const char *name) const;
 };
 
 /** \} */
@@ -331,11 +310,44 @@ class HashTableStats {
  * requires the parameters to be of type T. Our hash tables support lookups using other types
  * without conversion, therefore DefaultEquality needs to be more generic.
  */
-struct DefaultEquality {
+template<typename T> struct DefaultEquality {
   template<typename T1, typename T2> bool operator()(const T1 &a, const T2 &b) const
   {
     return a == b;
   }
+};
+
+/**
+ * Support comparing different kinds of raw and smart pointers.
+ */
+struct PointerComparison {
+  template<typename T1, typename T2> bool operator()(const T1 &a, const T2 &b) const
+  {
+    return &*a == &*b;
+  }
+};
+
+template<typename T> struct DefaultEquality<std::unique_ptr<T>> : public PointerComparison {
+};
+template<typename T> struct DefaultEquality<std::shared_ptr<T>> : public PointerComparison {
+};
+
+struct SequenceComparison {
+  template<typename T1, typename T2> bool operator()(const T1 &a, const T2 &b) const
+  {
+    const auto a_begin = a.begin();
+    const auto a_end = a.end();
+    const auto b_begin = b.begin();
+    const auto b_end = b.end();
+    if (a_end - a_begin != b_end - b_begin) {
+      return false;
+    }
+    return std::equal(a_begin, a_end, b_begin);
+  }
+};
+
+template<typename T, int64_t InlineBufferCapacity, typename Allocator>
+struct DefaultEquality<Vector<T, InlineBufferCapacity, Allocator>> : public SequenceComparison {
 };
 
 }  // namespace blender

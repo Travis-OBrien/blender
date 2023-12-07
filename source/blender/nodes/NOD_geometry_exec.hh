@@ -1,24 +1,32 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma once
+
+#include "BLI_color.hh"
+#include "BLI_math_quaternion_types.hh"
 
 #include "FN_field.hh"
 #include "FN_lazy_function.hh"
 #include "FN_multi_function_builder.hh"
 
+#include "BKE_attribute_math.hh"
 #include "BKE_geometry_fields.hh"
 #include "BKE_geometry_set.hh"
+#include "BKE_node_socket_value_cpp_type.hh"
 
 #include "DNA_node_types.h"
 
 #include "NOD_derived_node_tree.hh"
 #include "NOD_geometry_nodes_lazy_function.hh"
 
-struct ModifierData;
-
 namespace blender::nodes {
 
 using bke::AnonymousAttributeFieldInput;
+using bke::AnonymousAttributeID;
+using bke::AnonymousAttributeIDPtr;
+using bke::AnonymousAttributePropagationInfo;
 using bke::AttributeAccessor;
 using bke::AttributeFieldInput;
 using bke::AttributeIDRef;
@@ -26,20 +34,27 @@ using bke::AttributeKind;
 using bke::AttributeMetaData;
 using bke::AttributeReader;
 using bke::AttributeWriter;
+using bke::CurveComponent;
 using bke::GAttributeReader;
 using bke::GAttributeWriter;
+using bke::GeometryComponent;
+using bke::GeometryComponentEditData;
+using bke::GeometrySet;
+using bke::GreasePencilComponent;
 using bke::GSpanAttributeWriter;
+using bke::InstancesComponent;
+using bke::MeshComponent;
 using bke::MutableAttributeAccessor;
+using bke::PointCloudComponent;
 using bke::SpanAttributeWriter;
-using bke::StrongAnonymousAttributeID;
-using bke::WeakAnonymousAttributeID;
+using bke::ValueOrField;
+using bke::VolumeComponent;
 using fn::Field;
 using fn::FieldContext;
 using fn::FieldEvaluator;
 using fn::FieldInput;
 using fn::FieldOperation;
 using fn::GField;
-using fn::ValueOrField;
 using geo_eval_log::NamedAttributeUsage;
 using geo_eval_log::NodeWarningType;
 
@@ -48,16 +63,30 @@ class GeoNodeExecParams {
   const bNode &node_;
   lf::Params &params_;
   const lf::Context &lf_context_;
+  const Span<int> lf_input_for_output_bsocket_usage_;
+  const Span<int> lf_input_for_attribute_propagation_to_output_;
+  const FunctionRef<AnonymousAttributeIDPtr(int)> get_output_attribute_id_;
 
  public:
-  GeoNodeExecParams(const bNode &node, lf::Params &params, const lf::Context &lf_context)
-      : node_(node), params_(params), lf_context_(lf_context)
+  GeoNodeExecParams(const bNode &node,
+                    lf::Params &params,
+                    const lf::Context &lf_context,
+                    const Span<int> lf_input_for_output_bsocket_usage,
+                    const Span<int> lf_input_for_attribute_propagation_to_output,
+                    const FunctionRef<AnonymousAttributeIDPtr(int)> get_output_attribute_id)
+      : node_(node),
+        params_(params),
+        lf_context_(lf_context),
+        lf_input_for_output_bsocket_usage_(lf_input_for_output_bsocket_usage),
+        lf_input_for_attribute_propagation_to_output_(
+            lf_input_for_attribute_propagation_to_output),
+        get_output_attribute_id_(get_output_attribute_id)
   {
   }
 
   template<typename T>
   static inline constexpr bool is_field_base_type_v =
-      is_same_any_v<T, float, int, bool, ColorGeometry4f, float3, std::string>;
+      is_same_any_v<T, float, int, bool, ColorGeometry4f, float3, std::string, math::Quaternion>;
 
   /**
    * Get the input value for the input socket with the given identifier.
@@ -76,8 +105,16 @@ class GeoNodeExecParams {
           identifier);
       return value_or_field.as_field();
     }
+    else if constexpr (std::is_same_v<std::decay_t<T>, GField>) {
+      const int index = this->get_input_index(identifier);
+      const bNodeSocket &input_socket = node_.input_by_identifier(identifier);
+      const CPPType &value_type = *input_socket.typeinfo->geometry_nodes_cpp_type;
+      const bke::ValueOrFieldCPPType &value_or_field_type =
+          *bke::ValueOrFieldCPPType::get_from_self(value_type);
+      return value_or_field_type.as_field(params_.try_get_input_data_ptr(index));
+    }
     else {
-#ifdef DEBUG
+#ifndef NDEBUG
       this->check_input_access(identifier, &CPPType::get<T>());
 #endif
       const int index = this->get_input_index(identifier);
@@ -107,7 +144,7 @@ class GeoNodeExecParams {
       return value_or_field.as_field();
     }
     else {
-#ifdef DEBUG
+#ifndef NDEBUG
       this->check_input_access(identifier, &CPPType::get<T>());
 #endif
       const int index = this->get_input_index(identifier);
@@ -132,8 +169,15 @@ class GeoNodeExecParams {
       using BaseType = typename StoredT::base_type;
       this->set_output(identifier, ValueOrField<BaseType>(std::forward<T>(value)));
     }
+    else if constexpr (std::is_same_v<std::decay_t<StoredT>, GField>) {
+      bke::attribute_math::convert_to_static_type(value.cpp_type(), [&](auto dummy) {
+        using ValueT = decltype(dummy);
+        Field<ValueT> value_typed(std::forward<T>(value));
+        this->set_output(identifier, ValueOrField<ValueT>(std::move(value_typed)));
+      });
+    }
     else {
-#ifdef DEBUG
+#ifndef NDEBUG
       const CPPType &type = CPPType::get<StoredT>();
       this->check_output_access(identifier, type);
 #endif
@@ -147,14 +191,7 @@ class GeoNodeExecParams {
 
   geo_eval_log::GeoTreeLogger *get_local_tree_logger() const
   {
-    GeoNodesLFUserData *user_data = this->user_data();
-    BLI_assert(user_data != nullptr);
-    const ComputeContext *compute_context = user_data->compute_context;
-    BLI_assert(compute_context != nullptr);
-    if (user_data->modifier_data->eval_log == nullptr) {
-      return nullptr;
-    }
-    return &user_data->modifier_data->eval_log->get_local_tree_logger(*compute_context);
+    return this->local_user_data()->try_get_tree_logger(*this->user_data());
   }
 
   /**
@@ -168,36 +205,11 @@ class GeoNodeExecParams {
 
   /**
    * Returns true when the output has to be computed.
-   * Nodes that support laziness could use the #lazy_output_is_required variant to possibly avoid
-   * some computations.
    */
   bool output_is_required(StringRef identifier) const
   {
     const int index = this->get_output_index(identifier);
     return params_.get_output_usage(index) != lf::ValueUsage::Unused;
-  }
-
-  /**
-   * Tell the evaluator that a specific input is required.
-   * This returns true when the input will only be available in the next execution.
-   * False is returned if the input is available already.
-   * This can only be used when the node supports laziness.
-   */
-  bool lazy_require_input(StringRef identifier)
-  {
-    const int index = this->get_input_index(identifier);
-    return params_.try_get_input_data_ptr_or_request(index) == nullptr;
-  }
-
-  /**
-   * Asks the evaluator if a specific output is required right now. If this returns false, the
-   * value might still need to be computed later.
-   * This can only be used when the node supports laziness.
-   */
-  bool lazy_output_is_required(StringRef identifier)
-  {
-    const int index = this->get_output_index(identifier);
-    return params_.get_output_usage(index) == lf::ValueUsage::Used;
   }
 
   /**
@@ -211,9 +223,7 @@ class GeoNodeExecParams {
   const Object *self_object() const
   {
     if (const auto *data = this->user_data()) {
-      if (data->modifier_data) {
-        return data->modifier_data->self_object;
-      }
+      return data->call_data->self_object();
     }
     return nullptr;
   }
@@ -221,8 +231,11 @@ class GeoNodeExecParams {
   Depsgraph *depsgraph() const
   {
     if (const auto *data = this->user_data()) {
-      if (data->modifier_data) {
-        return data->modifier_data->depsgraph;
+      if (data->call_data->modifier_data) {
+        return data->call_data->modifier_data->depsgraph;
+      }
+      if (data->call_data->operator_data) {
+        return data->call_data->operator_data->depsgraph;
       }
     }
     return nullptr;
@@ -230,7 +243,12 @@ class GeoNodeExecParams {
 
   GeoNodesLFUserData *user_data() const
   {
-    return dynamic_cast<GeoNodesLFUserData *>(lf_context_.user_data);
+    return static_cast<GeoNodesLFUserData *>(lf_context_.user_data);
+  }
+
+  GeoNodesLFLocalUserData *local_user_data() const
+  {
+    return static_cast<GeoNodesLFLocalUserData *>(lf_context_.local_user_data);
   }
 
   /**
@@ -239,11 +257,51 @@ class GeoNodeExecParams {
    */
   void error_message_add(const NodeWarningType type, StringRef message) const;
 
-  std::string attribute_producer_name() const;
-
   void set_default_remaining_outputs();
 
   void used_named_attribute(StringRef attribute_name, NamedAttributeUsage usage);
+
+  /**
+   * Return true when the anonymous attribute referenced by the given output should be created.
+   */
+  bool anonymous_attribute_output_is_required(const StringRef output_identifier)
+  {
+    const int lf_index =
+        lf_input_for_output_bsocket_usage_[node_.output_by_identifier(output_identifier)
+                                               .index_in_all_outputs()];
+    return params_.get_input<bool>(lf_index);
+  }
+
+  /**
+   * Return a new anonymous attribute id for the given output. None is returned if the anonymous
+   * attribute is not needed.
+   */
+  AnonymousAttributeIDPtr get_output_anonymous_attribute_id_if_needed(
+      const StringRef output_identifier, const bool force_create = false)
+  {
+    if (!this->anonymous_attribute_output_is_required(output_identifier) && !force_create) {
+      return {};
+    }
+    const bNodeSocket &output_socket = node_.output_by_identifier(output_identifier);
+    return get_output_attribute_id_(output_socket.index());
+  }
+
+  /**
+   * Get information about which anonymous attributes should be propagated to the given output.
+   */
+  AnonymousAttributePropagationInfo get_output_propagation_info(
+      const StringRef output_identifier) const
+  {
+    const int lf_index =
+        lf_input_for_attribute_propagation_to_output_[node_.output_by_identifier(output_identifier)
+                                                          .index_in_all_outputs()];
+    const bke::AnonymousAttributeSet &set = params_.get_input<bke::AnonymousAttributeSet>(
+        lf_index);
+    AnonymousAttributePropagationInfo info;
+    info.names = set.names;
+    info.propagate_all = false;
+    return info;
+  }
 
  private:
   /* Utilities for detecting common errors at when using this class. */

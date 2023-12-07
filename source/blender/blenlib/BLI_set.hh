@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma once
 
@@ -43,8 +45,6 @@
  *   memory usage of the set.
  * - The method names don't follow the std::unordered_set names in many cases. Searching for such
  *   names in this file will usually let you discover the new name.
- * - There is a #StdUnorderedSetWrapper class, that wraps std::unordered_set and gives it the same
- *   interface as blender::Set. This is useful for bench-marking.
  *
  * Possible Improvements:
  * - Use a branch-less loop over slots in grow function (measured ~10% performance improvement when
@@ -55,8 +55,6 @@
  *   to make a nice interface for this functionality.
  */
 
-#include <unordered_set>
-
 #include "BLI_array.hh"
 #include "BLI_hash.hh"
 #include "BLI_hash_tables.hh"
@@ -66,8 +64,9 @@
 namespace blender {
 
 template<
-    /** Type of the elements that are stored in this set. It has to be movable. Furthermore, the
-     * hash and is-equal functions have to support it.
+    /**
+     * Type of the elements that are stored in this set. It has to be movable.
+     * Furthermore, the hash and is-equal functions have to support it.
      */
     typename Key,
     /**
@@ -89,7 +88,7 @@ template<
      * The equality operator used to compare keys. By default it will simply compare keys using the
      * `==` operator.
      */
-    typename IsEqual = DefaultEquality,
+    typename IsEqual = DefaultEquality<Key>,
     /**
      * This is what will actually be stored in the hash table array. At a minimum a slot has to
      * be able to hold a key and information about whether the slot is empty, occupied or removed.
@@ -175,9 +174,7 @@ class Set {
   {
   }
 
-  Set(NoExceptConstructor, Allocator allocator = {}) noexcept : Set(allocator)
-  {
-  }
+  Set(NoExceptConstructor, Allocator allocator = {}) noexcept : Set(allocator) {}
 
   Set(Span<Key> values, Allocator allocator = {}) : Set(NoExceptConstructor(), allocator)
   {
@@ -187,9 +184,7 @@ class Set {
   /**
    * Construct a set that contains the given keys. Duplicates will be removed automatically.
    */
-  Set(const std::initializer_list<Key> &values) : Set(Span<Key>(values))
-  {
-  }
+  Set(const std::initializer_list<Key> &values) : Set(Span<Key>(values)) {}
 
   ~Set() = default;
 
@@ -493,12 +488,14 @@ class Set {
   }
 
   /**
-   * Remove all values for which the given predicate is true.
+   * Remove all values for which the given predicate is true and return the number of removed
+   * values.
    *
    * This is similar to std::erase_if.
    */
-  template<typename Predicate> void remove_if(Predicate &&predicate)
+  template<typename Predicate> int64_t remove_if(Predicate &&predicate)
   {
+    const int64_t prev_size = this->size();
     for (Slot &slot : slots_) {
       if (slot.is_occupied()) {
         const Key &key = *slot.key();
@@ -508,12 +505,13 @@ class Set {
         }
       }
     }
+    return prev_size - this->size();
   }
 
   /**
    * Print common statistics like size and collision count. This is useful for debugging purposes.
    */
-  void print_stats(StringRef name = "") const
+  void print_stats(const char *name) const
   {
     HashTableStats stats(*this, *this);
     stats.print(name);
@@ -540,6 +538,15 @@ class Set {
 
     removed_slots_ = 0;
     occupied_and_removed_slots_ = 0;
+  }
+
+  /**
+   * Removes all keys from the set and frees any allocated memory.
+   */
+  void clear_and_shrink()
+  {
+    std::destroy_at(this);
+    new (this) Set(NoExceptConstructor{});
   }
 
   /**
@@ -635,6 +642,24 @@ class Set {
   static bool Disjoint(const Set &a, const Set &b)
   {
     return !Intersects(a, b);
+  }
+
+  friend bool operator==(const Set &a, const Set &b)
+  {
+    if (a.size() != b.size()) {
+      return false;
+    }
+    for (const Key &key : a) {
+      if (!b.contains(key)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  friend bool operator!=(const Set &a, const Set &b)
+  {
+    return !(a == b);
   }
 
  private:
@@ -762,6 +787,7 @@ class Set {
     SET_SLOT_PROBING_BEGIN (hash, slot) {
       if (slot.is_empty()) {
         slot.occupy(std::forward<ForwardKey>(key), hash);
+        BLI_assert(hash_(*slot.key()) == hash);
         occupied_and_removed_slots_++;
         return;
       }
@@ -776,6 +802,7 @@ class Set {
     SET_SLOT_PROBING_BEGIN (hash, slot) {
       if (slot.is_empty()) {
         slot.occupy(std::forward<ForwardKey>(key), hash);
+        BLI_assert(hash_(*slot.key()) == hash);
         occupied_and_removed_slots_++;
         return true;
       }
@@ -827,6 +854,7 @@ class Set {
       }
       if (slot.is_empty()) {
         slot.occupy(std::forward<ForwardKey>(key), hash);
+        BLI_assert(hash_(*slot.key()) == hash);
         occupied_and_removed_slots_++;
         return *slot.key();
       }
@@ -861,87 +889,6 @@ class Set {
 };
 
 /**
- * A wrapper for std::unordered_set with the API of blender::Set. This can be used for
- * benchmarking.
- */
-template<typename Key> class StdUnorderedSetWrapper {
- private:
-  using SetType = std::unordered_set<Key, blender::DefaultHash<Key>>;
-  SetType set_;
-
- public:
-  int64_t size() const
-  {
-    return int64_t(set_.size());
-  }
-
-  bool is_empty() const
-  {
-    return set_.empty();
-  }
-
-  void reserve(int64_t n)
-  {
-    set_.reserve(n);
-  }
-
-  void add_new(const Key &key)
-  {
-    set_.insert(key);
-  }
-  void add_new(Key &&key)
-  {
-    set_.insert(std::move(key));
-  }
-
-  bool add(const Key &key)
-  {
-    return set_.insert(key).second;
-  }
-  bool add(Key &&key)
-  {
-    return set_.insert(std::move(key)).second;
-  }
-
-  void add_multiple(Span<Key> keys)
-  {
-    for (const Key &key : keys) {
-      set_.insert(key);
-    }
-  }
-
-  bool contains(const Key &key) const
-  {
-    return set_.find(key) != set_.end();
-  }
-
-  bool remove(const Key &key)
-  {
-    return bool(set_.erase(key));
-  }
-
-  void remove_contained(const Key &key)
-  {
-    return set_.erase(key);
-  }
-
-  void clear()
-  {
-    set_.clear();
-  }
-
-  typename SetType::iterator begin() const
-  {
-    return set_.begin();
-  }
-
-  typename SetType::iterator end() const
-  {
-    return set_.end();
-  }
-};
-
-/**
  * Same as a normal Set, but does not use Blender's guarded allocator. This is useful when
  * allocating memory with static storage duration.
  */
@@ -949,7 +896,7 @@ template<typename Key,
          int64_t InlineBufferCapacity = default_inline_buffer_capacity(sizeof(Key)),
          typename ProbingStrategy = DefaultProbingStrategy,
          typename Hash = DefaultHash<Key>,
-         typename IsEqual = DefaultEquality,
+         typename IsEqual = DefaultEquality<Key>,
          typename Slot = typename DefaultSetSlot<Key>::type>
 using RawSet = Set<Key, InlineBufferCapacity, ProbingStrategy, Hash, IsEqual, Slot, RawAllocator>;
 

@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #ifndef GPU_SHADER
 #  pragma once
@@ -21,12 +23,14 @@ typedef struct DispatchCommand DispatchCommand;
 typedef struct DRWDebugPrintBuffer DRWDebugPrintBuffer;
 typedef struct DRWDebugVert DRWDebugVert;
 typedef struct DRWDebugDrawBuffer DRWDebugDrawBuffer;
+typedef struct FrustumCorners FrustumCorners;
+typedef struct FrustumPlanes FrustumPlanes;
 
-#  ifdef __cplusplus
+/* __cplusplus is true when compiling with MSL. */
+#  if defined(__cplusplus) && !defined(GPU_SHADER)
 /* C++ only forward declarations. */
 struct Object;
 struct ViewLayer;
-struct ID;
 struct GPUUniformAttr;
 struct GPULayerAttr;
 
@@ -41,6 +45,10 @@ struct ObjectRef;
 typedef enum eObjectInfoFlag eObjectInfoFlag;
 
 #  endif
+#endif
+
+#if defined(__cplusplus) && !defined(GPU_SHADER)
+extern "C" {
 #endif
 
 #define DRW_SHADER_SHARED_H
@@ -58,18 +66,12 @@ typedef enum eObjectInfoFlag eObjectInfoFlag;
 /** \name Views
  * \{ */
 
-/**
- * The maximum of indexable views is dictated by:
- * - The UBO limit (16KiB) of the ViewMatrices container.
- * - The maximum resource index supported for shaders using multi-view (see DRW_VIEW_SHIFT).
- */
-#define DRW_VIEW_MAX 64
-
 #ifndef DRW_VIEW_LEN
 /* Single-view case (default). */
 #  define drw_view_id 0
 #  define DRW_VIEW_LEN 1
 #  define DRW_VIEW_SHIFT 0
+#  define DRW_VIEW_FROM_RESOURCE_ID
 #else
 
 /* Multi-view case. */
@@ -90,14 +92,30 @@ uint drw_view_id = 0;
      (DRW_VIEW_LEN > 2)  ? 2 : \
                            1)
 #  define DRW_VIEW_MASK ~(0xFFFFFFFFu << DRW_VIEW_SHIFT)
-#  define DRW_VIEW_FROM_RESOURCE_ID (drw_ResourceID & DRW_VIEW_MASK)
+#  define DRW_VIEW_FROM_RESOURCE_ID drw_view_id = (uint(drw_ResourceID) & DRW_VIEW_MASK)
 #endif
+
+struct FrustumCorners {
+  float4 corners[8];
+};
+BLI_STATIC_ASSERT_ALIGN(FrustumCorners, 16)
+
+struct FrustumPlanes {
+  /* [0] left
+   * [1] right
+   * [2] bottom
+   * [3] top
+   * [4] near
+   * [5] far */
+  float4 planes[6];
+};
+BLI_STATIC_ASSERT_ALIGN(FrustumPlanes, 16)
 
 struct ViewCullingData {
   /** \note vec3 array padded to vec4. */
   /** Frustum corners. */
-  float4 corners[8];
-  float4 planes[6];
+  FrustumCorners frustum_corners;
+  FrustumPlanes frustum_planes;
   float4 bound_sphere;
 };
 BLI_STATIC_ASSERT_ALIGN(ViewCullingData, 16)
@@ -148,18 +166,18 @@ enum eObjectInfoFlag {
 
 struct ObjectInfos {
 #if defined(GPU_SHADER) && !defined(DRAW_FINALIZE_SHADER)
-  /* TODO Rename to struct member for glsl too. */
+  /* TODO Rename to struct member for GLSL too. */
   float4 orco_mul_bias[2];
-  float4 color;
+  float4 ob_color;
   float4 infos;
 #else
   /** Uploaded as center + size. Converted to mul+bias to local coord. */
-  float3 orco_add;
+  packed_float3 orco_add;
   uint object_attrs_offset;
-  float3 orco_mul;
+  packed_float3 orco_mul;
   uint object_attrs_len;
 
-  float4 color;
+  float4 ob_color;
   uint index;
   uint _pad2;
   float random;
@@ -186,7 +204,7 @@ struct ObjectBounds {
 
 #if !defined(GPU_SHADER) && defined(__cplusplus)
   void sync();
-  void sync(Object &ob);
+  void sync(const Object &ob, float inflate_bounds = 0.0f);
   void sync(const float3 &center, const float3 &size);
 #endif
 };
@@ -242,7 +260,7 @@ struct LayerAttribute {
   uint _pad1, _pad2;
 
 #if !defined(GPU_SHADER) && defined(__cplusplus)
-  bool sync(Scene *scene, ViewLayer *layer, const GPULayerAttr &attr);
+  bool sync(const Scene *scene, const ViewLayer *layer, const GPULayerAttr &attr);
 #endif
 };
 #pragma pack(pop)
@@ -310,8 +328,10 @@ BLI_STATIC_ASSERT_ALIGN(DRWDebugPrintBuffer, 16)
 /* Reuse first instance as row index as we don't use instancing. Equivalent to
  * `DRWDebugPrintBuffer.command.i_first`. */
 #define drw_debug_print_row_shared drw_debug_print_buf[3]
-/** Offset to the first data. Equal to: `sizeof(DrawCommand) / sizeof(uint)`.
- * This is needed because we bind the whole buffer as a `uint` array. */
+/**
+ * Offset to the first data. Equal to: `sizeof(DrawCommand) / sizeof(uint)`.
+ * This is needed because we bind the whole buffer as a `uint` array.
+ */
 #define drw_debug_print_offset 8
 
 /** \} */
@@ -326,12 +346,23 @@ struct DRWDebugVert {
   uint pos0;
   uint pos1;
   uint pos2;
-  uint color;
+  /* Named vert_color to avoid global namespace collision with uniform color. */
+  uint vert_color;
 };
 BLI_STATIC_ASSERT_ALIGN(DRWDebugVert, 16)
 
+inline DRWDebugVert debug_vert_make(uint in_pos0, uint in_pos1, uint in_pos2, uint in_vert_color)
+{
+  DRWDebugVert debug_vert;
+  debug_vert.pos0 = in_pos0;
+  debug_vert.pos1 = in_pos1;
+  debug_vert.pos2 = in_pos2;
+  debug_vert.vert_color = in_vert_color;
+  return debug_vert;
+}
+
 /* Take the header (DrawCommand) into account. */
-#define DRW_DEBUG_DRAW_VERT_MAX (64 * 1024) - 1
+#define DRW_DEBUG_DRAW_VERT_MAX (64 * 8192) - 1
 
 /* The debug draw buffer is laid-out as the following struct.
  * But we use plain array in shader code instead because of driver issues. */
@@ -343,8 +374,14 @@ BLI_STATIC_ASSERT_ALIGN(DRWDebugPrintBuffer, 16)
 
 /* Equivalent to `DRWDebugDrawBuffer.command.v_count`. */
 #define drw_debug_draw_v_count drw_debug_verts_buf[0].pos0
-/** Offset to the first data. Equal to: `sizeof(DrawCommand) / sizeof(DRWDebugVert)`.
- * This is needed because we bind the whole buffer as a `DRWDebugVert` array. */
+/**
+ * Offset to the first data. Equal to: `sizeof(DrawCommand) / sizeof(DRWDebugVert)`.
+ * This is needed because we bind the whole buffer as a `DRWDebugVert` array.
+ */
 #define drw_debug_draw_offset 2
 
 /** \} */
+
+#if defined(__cplusplus) && !defined(GPU_SHADER)
+}
+#endif

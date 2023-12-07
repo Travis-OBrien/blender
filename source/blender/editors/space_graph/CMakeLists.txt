@@ -1,53 +1,59 @@
+# SPDX-FileCopyrightText: 2023 Blender Authors
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 set(INC
   ../include
   ../../blenkernel
-  ../../blenlib
   ../../blenloader
   ../../blentranslation
-  ../../depsgraph
   ../../gpu
-  ../../makesdna
   ../../makesrna
   ../../windowmanager
-  ../../../../intern/guardedalloc
 
-  # dna_type_offsets.h
-  ${CMAKE_CURRENT_BINARY_DIR}/../../makesdna/intern
   # RNA_prototypes.h
   ${CMAKE_BINARY_DIR}/source/blender/makesrna
 )
 
+set(INC_SYS
+)
+
 set(SRC
-  graph_buttons.c
-  graph_draw.c
-  graph_edit.c
-  graph_ops.c
-  graph_select.c
-  graph_slider_ops.c
-  graph_utils.c
-  graph_view.c
-  space_graph.c
+  graph_buttons.cc
+  graph_draw.cc
+  graph_edit.cc
+  graph_ops.cc
+  graph_select.cc
+  graph_slider_ops.cc
+  graph_utils.cc
+  graph_view.cc
+  space_graph.cc
 
   graph_intern.h
 )
 
 set(LIB
   bf_blenkernel
-  bf_blenlib
+  PRIVATE bf::blenlib
+  PRIVATE bf::depsgraph
+  PRIVATE bf::dna
+  PRIVATE bf::intern::guardedalloc
+  PRIVATE bf::animrig
 )
 
 if(WITH_AUDASPACE)
+  list(APPEND LIB
+    bf_intern_audaspace
+  )
   list(APPEND INC_SYS
     ${AUDASPACE_C_INCLUDE_DIRS}
   )
-  list(APPEND LIB
-    bf_intern_audaspace
-
-    ${AUDASPACE_C_LIBRARIES}
-    ${AUDASPACE_PY_LIBRARIES}
-  )
+  if(WITH_SYSTEM_AUDASPACE)
+    list(APPEND LIB
+      ${AUDASPACE_C_LIBRARIES}
+      ${AUDASPACE_PY_LIBRARIES}
+    )
+  endif()
   add_definitions(-DWITH_AUDASPACE)
 endif()
 

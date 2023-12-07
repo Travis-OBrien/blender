@@ -1,15 +1,12 @@
+# SPDX-FileCopyrightText: 2006 Blender Authors
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Copyright 2006 Blender Foundation. All rights reserved.
 
 set(INC
   .
   ..
   ../..
   ../../../blenkernel
-  ../../../blenlib
-  ../../../makesdna
-  ../../../../../intern/guardedalloc
-  ../../../../../intern/utfconv
 )
 
 set(INC_SYS
@@ -22,6 +19,10 @@ set(SRC
 )
 
 set(LIB
+  PRIVATE bf::blenlib
+  PRIVATE bf::dna
+  PRIVATE bf::intern::guardedalloc
+  PRIVATE bf::intern::utfconv
 )
 
 if(WITH_IMAGE_OPENEXR)
@@ -32,6 +33,11 @@ if(WITH_IMAGE_OPENEXR)
     ${OPENEXR_LIBRARIES}
   )
   add_definitions(-DWITH_OPENEXR)
+  if(WIN32)
+    if(EXISTS ${LIBDIR}/imath/bin/imath.dll)
+      add_definitions(-DIMATH_DLL)
+    endif()
+  endif()
 endif()
 
 blender_add_lib(bf_imbuf_openexr "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")

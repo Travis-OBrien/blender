@@ -1,3 +1,7 @@
+/* SPDX-FileCopyrightText: 2022-2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
+
 #pragma BLENDER_REQUIRE(gpu_shader_common_math_utils.glsl)
 #pragma BLENDER_REQUIRE(gpu_shader_compositor_texture_utilities.glsl)
 
@@ -35,7 +39,7 @@ vec4 load_weight(ivec2 texel)
    * the texel into the normalized range [0, 1] needed to sample the weights sampler. Finally,
    * invert the textures coordinates by subtracting from 1 to maintain the shape of the weights as
    * mentioned in the function description. */
-  return texture(weights_tx, 1.0 - ((texel + vec2(radius + 0.5)) / (radius * 2 + 1)));
+  return texture(weights_tx, 1.0 - ((vec2(texel) + vec2(radius + 0.5)) / (radius * 2.0 + 1.0)));
 }
 
 void main()

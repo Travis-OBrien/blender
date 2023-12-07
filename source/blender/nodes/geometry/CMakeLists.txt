@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2023 Blender Authors
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 set(INC
@@ -6,29 +8,28 @@ set(INC
   ../intern
   ../../editors/include
   ../../blenkernel
-  ../../blenlib
   ../../blentranslation
   ../../bmesh
-  ../../depsgraph
-  ../../functions
   ../../geometry
   ../../gpu
-  ../../imbuf
-  ../../makesdna
   ../../makesrna
+  ../../modifiers
   ../../render
   ../../windowmanager
-  ../../../../intern/guardedalloc
+  ../../../../extern/fmtlib/include
   # RNA_prototypes.h
   ${CMAKE_BINARY_DIR}/source/blender/makesrna
 )
 
+set(INC_SYS
+)
 
 set(SRC
   nodes/node_geo_accumulate_field.cc
   nodes/node_geo_attribute_capture.cc
   nodes/node_geo_attribute_domain_size.cc
   nodes/node_geo_attribute_statistic.cc
+  nodes/node_geo_blur_attribute.cc
   nodes/node_geo_boolean.cc
   nodes/node_geo_bounding_box.cc
   nodes/node_geo_collection_info.cc
@@ -68,14 +69,21 @@ set(SRC
   nodes/node_geo_edge_paths_to_curves.cc
   nodes/node_geo_edge_paths_to_selection.cc
   nodes/node_geo_edge_split.cc
+  nodes/node_geo_edges_to_face_groups.cc
+  nodes/node_geo_evaluate_at_index.cc
+  nodes/node_geo_evaluate_on_domain.cc
   nodes/node_geo_extrude_mesh.cc
-  nodes/node_geo_field_at_index.cc
   nodes/node_geo_flip_faces.cc
   nodes/node_geo_geometry_to_instance.cc
+  nodes/node_geo_image.cc
   nodes/node_geo_image_info.cc
   nodes/node_geo_image_texture.cc
+  nodes/node_geo_index_of_nearest.cc
+  nodes/node_geo_index_switch.cc
   nodes/node_geo_input_curve_handles.cc
   nodes/node_geo_input_curve_tilt.cc
+  nodes/node_geo_input_edge_smooth.cc
+  nodes/node_geo_input_face_smooth.cc
   nodes/node_geo_input_id.cc
   nodes/node_geo_input_index.cc
   nodes/node_geo_input_instance_rotation.cc
@@ -91,11 +99,11 @@ set(SRC
   nodes/node_geo_input_mesh_island.cc
   nodes/node_geo_input_mesh_vertex_neighbors.cc
   nodes/node_geo_input_named_attribute.cc
+  nodes/node_geo_input_named_layer_selection.cc
   nodes/node_geo_input_normal.cc
   nodes/node_geo_input_position.cc
   nodes/node_geo_input_radius.cc
   nodes/node_geo_input_scene_time.cc
-  nodes/node_geo_input_shade_smooth.cc
   nodes/node_geo_input_shortest_edge_paths.cc
   nodes/node_geo_input_spline_cyclic.cc
   nodes/node_geo_input_spline_length.cc
@@ -103,13 +111,13 @@ set(SRC
   nodes/node_geo_input_tangent.cc
   nodes/node_geo_instance_on_points.cc
   nodes/node_geo_instances_to_points.cc
-  nodes/node_geo_interpolate_domain.cc
+  nodes/node_geo_interpolate_curves.cc
   nodes/node_geo_is_viewport.cc
   nodes/node_geo_join_geometry.cc
   nodes/node_geo_material_replace.cc
   nodes/node_geo_material_selection.cc
   nodes/node_geo_merge_by_distance.cc
-  nodes/node_geo_mesh_face_set_boundaries.cc
+  nodes/node_geo_mesh_face_group_boundaries.cc
   nodes/node_geo_mesh_primitive_circle.cc
   nodes/node_geo_mesh_primitive_cone.cc
   nodes/node_geo_mesh_primitive_cube.cc
@@ -122,6 +130,7 @@ set(SRC
   nodes/node_geo_mesh_to_curve.cc
   nodes/node_geo_mesh_to_points.cc
   nodes/node_geo_mesh_to_volume.cc
+  nodes/node_geo_mesh_topology_corners_of_edge.cc
   nodes/node_geo_mesh_topology_corners_of_face.cc
   nodes/node_geo_mesh_topology_corners_of_vertex.cc
   nodes/node_geo_mesh_topology_edges_of_corner.cc
@@ -132,12 +141,15 @@ set(SRC
   nodes/node_geo_object_info.cc
   nodes/node_geo_offset_point_in_curve.cc
   nodes/node_geo_points.cc
+  nodes/node_geo_points_to_curves.cc
   nodes/node_geo_points_to_vertices.cc
   nodes/node_geo_points_to_volume.cc
   nodes/node_geo_proximity.cc
   nodes/node_geo_raycast.cc
   nodes/node_geo_realize_instances.cc
   nodes/node_geo_remove_attribute.cc
+  nodes/node_geo_repeat_input.cc
+  nodes/node_geo_repeat_output.cc
   nodes/node_geo_rotate_instances.cc
   nodes/node_geo_sample_index.cc
   nodes/node_geo_sample_nearest.cc
@@ -160,12 +172,20 @@ set(SRC
   nodes/node_geo_set_shade_smooth.cc
   nodes/node_geo_set_spline_cyclic.cc
   nodes/node_geo_set_spline_resolution.cc
+  nodes/node_geo_simulation_input.cc
+  nodes/node_geo_simulation_output.cc
+  nodes/node_geo_split_to_instances.cc
   nodes/node_geo_store_named_attribute.cc
   nodes/node_geo_string_join.cc
   nodes/node_geo_string_to_curves.cc
   nodes/node_geo_subdivision_surface.cc
   nodes/node_geo_switch.cc
-  nodes/node_geo_transform.cc
+  nodes/node_geo_tool_3d_cursor.cc
+  nodes/node_geo_tool_face_set.cc
+  nodes/node_geo_tool_selection.cc
+  nodes/node_geo_tool_set_face_set.cc
+  nodes/node_geo_tool_set_selection.cc
+  nodes/node_geo_transform_geometry.cc
   nodes/node_geo_translate_instances.cc
   nodes/node_geo_triangulate.cc
   nodes/node_geo_uv_pack_islands.cc
@@ -181,10 +201,16 @@ set(SRC
 )
 
 set(LIB
+  PRIVATE bf::blenlib
   bf_bmesh
-  bf_functions
+  PRIVATE bf::depsgraph
+  PRIVATE bf::dna
+  PRIVATE bf::functions
   bf_geometry
+  PRIVATE bf::imbuf
+  PRIVATE bf::intern::guardedalloc
   bf_nodes
+  extern_fmtlib
 )
 
 if(WITH_BULLET)
@@ -192,12 +218,6 @@ if(WITH_BULLET)
     ${BULLET_INCLUDE_DIRS}
     ../../../../intern/rigidbody
   )
-  if(NOT WITH_SYSTEM_BULLET)
-  list(APPEND LIB
-    extern_bullet
-    )
-  endif()
-
   list(APPEND LIB
     ${BULLET_LIBRARIES}
   )
@@ -243,7 +263,19 @@ if(WITH_OPENVDB)
   add_definitions(-DWITH_OPENVDB ${OPENVDB_DEFINITIONS})
 endif()
 
+add_node_discovery(
+  bf_nodes_geometry_generated
+  "${SRC}"
+  ${CMAKE_CURRENT_BINARY_DIR}/register_geometry_nodes.cc
+  register_geometry_nodes
+)
+
+list(APPEND LIB
+  bf_nodes_geometry_generated
+)
+
 blender_add_lib(bf_nodes_geometry "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
+target_link_libraries(bf_nodes_geometry_generated bf_nodes_geometry)
 
 if(WITH_UNITY_BUILD)
   set_target_properties(bf_nodes_geometry PROPERTIES UNITY_BUILD ON)

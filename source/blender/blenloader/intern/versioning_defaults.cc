@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /** \file
  * \ingroup blenloader
@@ -11,18 +13,22 @@
  * To update preference defaults see `userdef_default.c`.
  */
 
+#define DNA_DEPRECATED_ALLOW
+
 #include "MEM_guardedalloc.h"
 
 #include "BLI_listbase.h"
-#include "BLI_math.h"
-#include "BLI_math_vec_types.hh"
+#include "BLI_math_rotation.h"
+#include "BLI_math_vector.h"
+#include "BLI_math_vector_types.hh"
 #include "BLI_string.h"
 #include "BLI_system.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_camera_types.h"
 #include "DNA_curveprofile_types.h"
-#include "DNA_gpencil_types.h"
+#include "DNA_defaults.h"
+#include "DNA_gpencil_legacy_types.h"
 #include "DNA_light_types.h"
 #include "DNA_mask_types.h"
 #include "DNA_material_types.h"
@@ -38,31 +44,32 @@
 
 #include "BKE_appdir.h"
 #include "BKE_attribute.hh"
-#include "BKE_brush.h"
+#include "BKE_brush.hh"
 #include "BKE_colortools.h"
 #include "BKE_curveprofile.h"
-#include "BKE_customdata.h"
-#include "BKE_gpencil.h"
+#include "BKE_customdata.hh"
+#include "BKE_gpencil_legacy.h"
 #include "BKE_idprop.h"
 #include "BKE_layer.h"
 #include "BKE_lib_id.h"
-#include "BKE_main.h"
-#include "BKE_main_namemap.h"
+#include "BKE_main.hh"
+#include "BKE_main_namemap.hh"
 #include "BKE_material.h"
-#include "BKE_mesh.h"
-#include "BKE_node.h"
-#include "BKE_node_tree_update.h"
-#include "BKE_paint.h"
-#include "BKE_screen.h"
+#include "BKE_mesh.hh"
+#include "BKE_node.hh"
+#include "BKE_node_runtime.hh"
+#include "BKE_node_tree_update.hh"
+#include "BKE_paint.hh"
+#include "BKE_screen.hh"
 #include "BKE_workspace.h"
 
 #include "BLO_readfile.h"
 
 #include "BLT_translation.h"
 
-#include "versioning_common.h"
+#include "versioning_common.hh"
 
-/* Make preferences read-only, use versioning_userdef.c. */
+/* Make preferences read-only, use `versioning_userdef.cc`. */
 #define U (*((const UserDef *)&U))
 
 static bool blo_is_builtin_template(const char *app_template)
@@ -81,7 +88,7 @@ static void blo_update_defaults_screen(bScreen *screen,
   LISTBASE_FOREACH (ScrArea *, area, &screen->areabase) {
     LISTBASE_FOREACH (ARegion *, region, &area->regionbase) {
       /* Some toolbars have been saved as initialized,
-       * we don't want them to have odd zoom-level or scrolling set, see: T47047 */
+       * we don't want them to have odd zoom-level or scrolling set, see: #47047 */
       if (ELEM(region->regiontype, RGN_TYPE_UI, RGN_TYPE_TOOLS, RGN_TYPE_TOOL_PROPS)) {
         region->v2d.flag &= ~V2D_IS_INIT;
       }
@@ -163,7 +170,8 @@ static void blo_update_defaults_screen(bScreen *screen,
       seq->render_size = SEQ_RENDER_SIZE_PROXY_100;
       seq->timeline_overlay.flag |= SEQ_TIMELINE_SHOW_STRIP_SOURCE | SEQ_TIMELINE_SHOW_STRIP_NAME |
                                     SEQ_TIMELINE_SHOW_STRIP_DURATION | SEQ_TIMELINE_SHOW_GRID |
-                                    SEQ_TIMELINE_SHOW_STRIP_COLOR_TAG;
+                                    SEQ_TIMELINE_SHOW_STRIP_COLOR_TAG |
+                                    SEQ_TIMELINE_SHOW_STRIP_RETIMING;
       seq->preview_overlay.flag |= SEQ_PREVIEW_SHOW_OUTLINE_SELECTED;
     }
     else if (area->spacetype == SPACE_TEXT) {
@@ -180,8 +188,8 @@ static void blo_update_defaults_screen(bScreen *screen,
       v3d->overlay.texture_paint_mode_opacity = 1.0f;
       v3d->overlay.weight_paint_mode_opacity = 1.0f;
       v3d->overlay.vertex_paint_mode_opacity = 1.0f;
-      /* Use dimmed selected edges. */
-      v3d->overlay.edit_flag &= ~V3D_OVERLAY_EDIT_EDGES;
+      /* Clear this deprecated bit for later reuse. */
+      v3d->overlay.edit_flag &= ~V3D_OVERLAY_EDIT_EDGES_DEPRECATED;
       /* grease pencil settings */
       v3d->vertex_opacity = 1.0f;
       v3d->gp_flag |= V3D_GP_SHOW_EDIT_LINES;
@@ -261,7 +269,7 @@ void BLO_update_defaults_workspace(WorkSpace *workspace, const char *app_templat
 
     /* For 2D animation template. */
     if (STREQ(workspace->id.name + 2, "Drawing")) {
-      workspace->object_mode = OB_MODE_PAINT_GPENCIL;
+      workspace->object_mode = OB_MODE_PAINT_GPENCIL_LEGACY;
     }
 
     /* For Sculpting template. */
@@ -287,7 +295,7 @@ void BLO_update_defaults_workspace(WorkSpace *workspace, const char *app_templat
 
 static void blo_update_defaults_scene(Main *bmain, Scene *scene)
 {
-  BLI_strncpy(scene->r.engine, RE_engine_id_BLENDER_EEVEE, sizeof(scene->r.engine));
+  STRNCPY(scene->r.engine, RE_engine_id_BLENDER_EEVEE);
 
   scene->r.cfra = 1.0f;
 
@@ -295,7 +303,7 @@ static void blo_update_defaults_scene(Main *bmain, Scene *scene)
   if (scene->nodetree) {
     ntreeFreeEmbeddedTree(scene->nodetree);
     MEM_freeN(scene->nodetree);
-    scene->nodetree = NULL;
+    scene->nodetree = nullptr;
     scene->use_nodes = false;
   }
 
@@ -325,7 +333,7 @@ static void blo_update_defaults_scene(Main *bmain, Scene *scene)
 
   /* Be sure `curfalloff` and primitive are initialized. */
   ToolSettings *ts = scene->toolsettings;
-  if (ts->gp_sculpt.cur_falloff == NULL) {
+  if (ts->gp_sculpt.cur_falloff == nullptr) {
     ts->gp_sculpt.cur_falloff = BKE_curvemapping_add(1, 0.0f, 0.0f, 1.0f, 1.0f);
     CurveMapping *gp_falloff_curve = ts->gp_sculpt.cur_falloff;
     BKE_curvemapping_init(gp_falloff_curve);
@@ -334,7 +342,7 @@ static void blo_update_defaults_scene(Main *bmain, Scene *scene)
                        CURVE_PRESET_GAUSS,
                        CURVEMAP_SLOPE_POSITIVE);
   }
-  if (ts->gp_sculpt.cur_primitive == NULL) {
+  if (ts->gp_sculpt.cur_primitive == nullptr) {
     ts->gp_sculpt.cur_primitive = BKE_curvemapping_add(1, 0.0f, 0.0f, 1.0f, 1.0f);
     CurveMapping *gp_primitive_curve = ts->gp_sculpt.cur_primitive;
     BKE_curvemapping_init(gp_primitive_curve);
@@ -345,31 +353,30 @@ static void blo_update_defaults_scene(Main *bmain, Scene *scene)
   }
 
   if (ts->sculpt) {
-    ts->sculpt->paint.symmetry_flags |= PAINT_SYMMETRY_FEATHER;
+    ts->sculpt->flags = static_cast<const Sculpt *>(DNA_struct_default_get(Sculpt))->flags;
   }
 
-  /* Correct default startup UV's. */
+  /* Correct default startup UVs. */
   Mesh *me = static_cast<Mesh *>(BLI_findstring(&bmain->meshes, "Cube", offsetof(ID, name) + 2));
-  if (me && (me->totloop == 24) && CustomData_has_layer(&me->ldata, CD_MLOOPUV)) {
-    MLoopUV *mloopuv = static_cast<MLoopUV *>(CustomData_get_layer(&me->ldata, CD_MLOOPUV));
+  if (me && (me->totloop == 24) && CustomData_has_layer(&me->loop_data, CD_PROP_FLOAT2)) {
     const float uv_values[24][2] = {
         {0.625, 0.50}, {0.875, 0.50}, {0.875, 0.75}, {0.625, 0.75}, {0.375, 0.75}, {0.625, 0.75},
         {0.625, 1.00}, {0.375, 1.00}, {0.375, 0.00}, {0.625, 0.00}, {0.625, 0.25}, {0.375, 0.25},
         {0.125, 0.50}, {0.375, 0.50}, {0.375, 0.75}, {0.125, 0.75}, {0.375, 0.50}, {0.625, 0.50},
         {0.625, 0.75}, {0.375, 0.75}, {0.375, 0.25}, {0.625, 0.25}, {0.625, 0.50}, {0.375, 0.50},
     };
-    for (int i = 0; i < ARRAY_SIZE(uv_values); i++) {
-      copy_v2_v2(mloopuv[i].uv, uv_values[i]);
-    }
+    float(*mloopuv)[2] = static_cast<float(*)[2]>(
+        CustomData_get_layer_for_write(&me->loop_data, CD_PROP_FLOAT2, me->totloop));
+    memcpy(mloopuv, uv_values, sizeof(float[2]) * me->totloop);
   }
 
   /* Make sure that the curve profile is initialized */
-  if (ts->custom_bevel_profile_preset == NULL) {
+  if (ts->custom_bevel_profile_preset == nullptr) {
     ts->custom_bevel_profile_preset = BKE_curveprofile_add(PROF_PRESET_LINE);
   }
 
   /* Clear ID properties so Cycles gets defaults. */
-  IDProperty *idprop = IDP_GetProperties(&scene->id, false);
+  IDProperty *idprop = IDP_GetProperties(&scene->id);
   if (idprop) {
     IDP_ClearProperty(idprop);
   }
@@ -421,7 +428,7 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
 
     /* Rename and fix materials and enable default object lights on. */
     if (app_template && STREQ(app_template, "2D_Animation")) {
-      Material *ma = NULL;
+      Material *ma = nullptr;
       do_versions_rename_id(bmain, ID_MA, "Black", "Solid Stroke");
       do_versions_rename_id(bmain, ID_MA, "Red", "Squares Stroke");
       do_versions_rename_id(bmain, ID_MA, "Grey", "Solid Fill");
@@ -430,7 +437,7 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
       /* Dots Stroke. */
       ma = static_cast<Material *>(
           BLI_findstring(&bmain->materials, "Dots Stroke", offsetof(ID, name) + 2));
-      if (ma == NULL) {
+      if (ma == nullptr) {
         ma = BKE_gpencil_material_add(bmain, "Dots Stroke");
       }
       ma->gp_style->mode = GP_MATERIAL_MODE_DOT;
@@ -438,7 +445,7 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
       /* Squares Stroke. */
       ma = static_cast<Material *>(
           BLI_findstring(&bmain->materials, "Squares Stroke", offsetof(ID, name) + 2));
-      if (ma == NULL) {
+      if (ma == nullptr) {
         ma = BKE_gpencil_material_add(bmain, "Squares Stroke");
       }
       ma->gp_style->mode = GP_MATERIAL_MODE_SQUARE;
@@ -446,7 +453,7 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
       /* Change Solid Stroke settings. */
       ma = static_cast<Material *>(
           BLI_findstring(&bmain->materials, "Solid Stroke", offsetof(ID, name) + 2));
-      if (ma != NULL) {
+      if (ma != nullptr) {
         ma->gp_style->mix_rgba[3] = 1.0f;
         ma->gp_style->texture_offset[0] = -0.5f;
         ma->gp_style->mix_factor = 0.5f;
@@ -455,7 +462,7 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
       /* Change Solid Fill settings. */
       ma = static_cast<Material *>(
           BLI_findstring(&bmain->materials, "Solid Fill", offsetof(ID, name) + 2));
-      if (ma != NULL) {
+      if (ma != nullptr) {
         ma->gp_style->flag &= ~GP_MATERIAL_STROKE_SHOW;
         ma->gp_style->mix_rgba[3] = 1.0f;
         ma->gp_style->texture_offset[0] = -0.5f;
@@ -464,29 +471,43 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
 
       Object *ob = static_cast<Object *>(
           BLI_findstring(&bmain->objects, "Stroke", offsetof(ID, name) + 2));
-      if (ob && ob->type == OB_GPENCIL) {
+      if (ob && ob->type == OB_GPENCIL_LEGACY) {
         ob->dtx |= OB_USE_GPENCIL_LIGHTS;
       }
     }
 
     /* Reset all grease pencil brushes. */
-    Scene *scene = static_cast<Scene *>(bmain->scenes.first);
-    BKE_brush_gpencil_paint_presets(bmain, scene->toolsettings, true);
-    BKE_brush_gpencil_sculpt_presets(bmain, scene->toolsettings, true);
-    BKE_brush_gpencil_vertex_presets(bmain, scene->toolsettings, true);
-    BKE_brush_gpencil_weight_presets(bmain, scene->toolsettings, true);
+    LISTBASE_FOREACH (Scene *, scene, &bmain->scenes) {
+      ToolSettings *ts = scene->toolsettings;
 
-    /* Ensure new Paint modes. */
-    BKE_paint_ensure_from_paintmode(scene, PAINT_MODE_VERTEX_GPENCIL);
-    BKE_paint_ensure_from_paintmode(scene, PAINT_MODE_SCULPT_GPENCIL);
-    BKE_paint_ensure_from_paintmode(scene, PAINT_MODE_WEIGHT_GPENCIL);
+      if (ts->gp_paint) {
+        BKE_brush_gpencil_paint_presets(bmain, ts, true);
+      }
+      if (ts->gp_sculptpaint) {
+        BKE_brush_gpencil_sculpt_presets(bmain, ts, true);
+      }
+      if (ts->gp_vertexpaint) {
+        BKE_brush_gpencil_vertex_presets(bmain, ts, true);
+      }
+      if (ts->gp_weightpaint) {
+        BKE_brush_gpencil_weight_presets(bmain, ts, true);
+      }
 
-    /* Enable cursor. */
-    GpPaint *gp_paint = scene->toolsettings->gp_paint;
-    gp_paint->paint.flags |= PAINT_SHOW_BRUSH;
+      /* Ensure new Paint modes. */
+      BKE_paint_ensure_from_paintmode(scene, PAINT_MODE_VERTEX_GPENCIL);
+      BKE_paint_ensure_from_paintmode(scene, PAINT_MODE_SCULPT_GPENCIL);
+      BKE_paint_ensure_from_paintmode(scene, PAINT_MODE_WEIGHT_GPENCIL);
 
-    /* Ensure Palette by default. */
-    BKE_gpencil_palette_ensure(bmain, scene);
+      /* Enable cursor. */
+      if (ts->gp_paint) {
+        ts->gp_paint->paint.flags |= PAINT_SHOW_BRUSH;
+      }
+
+      /* Ensure Palette by default. */
+      if (ts->gp_paint) {
+        BKE_gpencil_palette_ensure(bmain, scene);
+      }
+    }
   }
 
   /* For builtin templates only. */
@@ -494,7 +515,7 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
     return;
   }
 
-  /* Workspaces. */
+  /* Work-spaces. */
   LISTBASE_FOREACH (wmWindowManager *, wm, &bmain->wm) {
     LISTBASE_FOREACH (wmWindow *, win, &wm->windows) {
       LISTBASE_FOREACH (WorkSpace *, workspace, &bmain->workspaces) {
@@ -526,10 +547,19 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
   LISTBASE_FOREACH (Scene *, scene, &bmain->scenes) {
     blo_update_defaults_scene(bmain, scene);
 
-    if (app_template && STREQ(app_template, "Video_Editing")) {
+    if (app_template && STR_ELEM(app_template, "Video_Editing", "2D_Animation")) {
       /* Filmic is too slow, use standard until it is optimized. */
       STRNCPY(scene->view_settings.view_transform, "Standard");
       STRNCPY(scene->view_settings.look, "None");
+    }
+    else {
+      /* Default to AgX view transform. */
+      STRNCPY(scene->view_settings.view_transform, "AgX");
+    }
+
+    if (app_template && STREQ(app_template, "Video_Editing")) {
+      /* Pass: no extra tweaks needed. Keep the view settings configured above, and rely on the
+       * default state of enabled AV sync. */
     }
     else {
       /* AV Sync break physics sim caching, disable until that is fixed. */
@@ -550,10 +580,10 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
 
   if (app_template && STREQ(app_template, "2D_Animation")) {
     LISTBASE_FOREACH (Object *, object, &bmain->objects) {
-      if (object->type == OB_GPENCIL) {
+      if (object->type == OB_GPENCIL_LEGACY) {
         /* Set grease pencil object in drawing mode */
         bGPdata *gpd = (bGPdata *)object->data;
-        object->mode = OB_MODE_PAINT_GPENCIL;
+        object->mode = OB_MODE_PAINT_GPENCIL_LEGACY;
         gpd->flag |= GP_DATA_STROKE_PAINTMODE;
         break;
       }
@@ -562,10 +592,9 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
 
   LISTBASE_FOREACH (Mesh *, mesh, &bmain->meshes) {
     /* Match default for new meshes. */
-    mesh->smoothresh = DEG2RADF(30);
+    mesh->smoothresh_legacy = DEG2RADF(30);
     /* Match voxel remesher options for all existing meshes in templates. */
-    mesh->flag |= ME_REMESH_REPROJECT_VOLUME | ME_REMESH_REPROJECT_PAINT_MASK |
-                  ME_REMESH_REPROJECT_SCULPT_FACE_SETS | ME_REMESH_REPROJECT_VERTEX_COLORS;
+    mesh->flag |= ME_REMESH_REPROJECT_VOLUME | ME_REMESH_REPROJECT_ATTRIBUTES;
 
     /* For Sculpting template. */
     if (app_template && STREQ(app_template, "Sculpting")) {
@@ -574,8 +603,8 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
     }
     else {
       /* Remove sculpt-mask data in default mesh objects for all non-sculpt templates. */
-      CustomData_free_layers(&mesh->vdata, CD_PAINT_MASK, mesh->totvert);
-      CustomData_free_layers(&mesh->ldata, CD_GRID_PAINT_MASK, mesh->totloop);
+      CustomData_free_layers(&mesh->vert_data, CD_PAINT_MASK, mesh->totvert);
+      CustomData_free_layers(&mesh->loop_data, CD_GRID_PAINT_MASK, mesh->totloop);
     }
     mesh->attributes_for_write().remove(".sculpt_face_set");
   }
@@ -598,12 +627,16 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
     ma->roughness = 0.5f;
 
     if (ma->nodetree) {
-      LISTBASE_FOREACH (bNode *, node, &ma->nodetree->nodes) {
+      for (bNode *node : ma->nodetree->all_nodes()) {
         if (node->type == SH_NODE_BSDF_PRINCIPLED) {
           bNodeSocket *roughness_socket = nodeFindSocket(node, SOCK_IN, "Roughness");
-          bNodeSocketValueFloat *roughness_data = static_cast<bNodeSocketValueFloat *>(
-              roughness_socket->default_value);
-          roughness_data->value = 0.5f;
+          *version_cycles_node_socket_float_value(roughness_socket) = 0.5f;
+          bNodeSocket *emission = nodeFindSocket(node, SOCK_IN, "Emission Color");
+          copy_v4_fl(version_cycles_node_socket_rgba_value(emission), 1.0f);
+          bNodeSocket *emission_strength = nodeFindSocket(node, SOCK_IN, "Emission Strength");
+          *version_cycles_node_socket_float_value(emission_strength) = 0.0f;
+
+          node->custom1 = SHD_GLOSSY_MULTI_GGX;
           node->custom2 = SHD_SUBSURFACE_RANDOM_WALK;
           BKE_ntree_update_tag_node_property(ma->nodetree, node);
         }
@@ -637,7 +670,7 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
      * its values are overwritten by #BKE_brush_sculpt_reset below. */
     brush->alpha = 1.0;
 
-    /* Enable antialiasing by default */
+    /* Enable anti-aliasing by default. */
     brush->sampling_flag |= BRUSH_PAINT_ANTIALIASING;
   }
 
@@ -778,7 +811,9 @@ void BLO_update_defaults_startup_blend(Main *bmain, const char *app_template)
       id_us_min(&brush->id);
       brush->sculpt_tool = SCULPT_TOOL_DISPLACEMENT_SMEAR;
     }
+  }
 
+  {
     /* Use the same tool icon color in the brush cursor */
     LISTBASE_FOREACH (Brush *, brush, &bmain->brushes) {
       if (brush->ob_mode & OB_MODE_SCULPT) {

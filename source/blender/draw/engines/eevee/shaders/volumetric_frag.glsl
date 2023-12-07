@@ -1,12 +1,13 @@
-
-#pragma BLENDER_REQUIRE(volumetric_lib.glsl)
+/* SPDX-FileCopyrightText: 2017-2022 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /* Based on Frosbite Unified Volumetric.
  * https://www.ea.com/frostbite/news/physically-based-unified-volumetric-rendering-in-frostbite */
 
-/* Store volumetric properties into the froxel textures. */
+#pragma BLENDER_REQUIRE(volumetric_lib.glsl)
 
-flat in int slice;
+/* Store volumetric properties into the froxel textures. */
 
 /* WARNING: these are not attributes, these are global vars. */
 vec3 worldPosition = vec3(0.0);
@@ -15,12 +16,7 @@ vec3 viewPosition = vec3(0.0);
 vec3 viewNormal = vec3(0.0);
 vec3 volumeOrco = vec3(0.0);
 
-layout(location = 0) out vec4 volumeScattering;
-layout(location = 1) out vec4 volumeExtinction;
-layout(location = 2) out vec4 volumeEmissive;
-layout(location = 3) out vec4 volumePhase;
-
-int attr_id;
+int attr_id = 0;
 
 #ifndef CLEAR
 GlobalData init_globals(void)
@@ -70,7 +66,7 @@ vec3 coordinate_incoming(vec3 P)
 
 void main()
 {
-  ivec3 volume_cell = ivec3(ivec2(gl_FragCoord.xy), slice);
+  ivec3 volume_cell = ivec3(ivec2(gl_FragCoord.xy), volumetric_geom_iface.slice);
   vec3 ndc_cell = volume_to_ndc((vec3(volume_cell) + volJitter.xyz) * volInvTexSize.xyz);
 
   viewPosition = get_view_space_from_depth(ndc_cell.xy, ndc_cell.z);
@@ -97,7 +93,9 @@ void main()
   volumePhase = vec4(0.0, 0.0, 0.0, 0.0);
 #else
   g_data = init_globals();
+#  ifndef NO_ATTRIB_LOAD
   attrib_load();
+#  endif
   Closure cl = nodetree_exec();
 #  ifdef MESH_SHADER
   cl.scatter *= drw_volume.density_scale;

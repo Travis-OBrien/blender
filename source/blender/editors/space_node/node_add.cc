@@ -1,11 +1,14 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later
- * Copyright 2005 Blender Foundation. All rights reserved. */
+/* SPDX-FileCopyrightText: 2005 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /** \file
  * \ingroup spnode
  */
 
 #include <numeric>
+
+#include "AS_asset_representation.hh"
 
 #include "MEM_guardedalloc.h"
 
@@ -14,36 +17,38 @@
 #include "DNA_texture_types.h"
 
 #include "BLI_listbase.h"
+#include "BLI_math_geom.h"
 
 #include "BLT_translation.h"
 
-#include "BKE_context.h"
+#include "BKE_context.hh"
 #include "BKE_image.h"
 #include "BKE_lib_id.h"
-#include "BKE_main.h"
-#include "BKE_node.h"
+#include "BKE_main.hh"
+#include "BKE_node.hh"
 #include "BKE_node_runtime.hh"
-#include "BKE_node_tree_update.h"
+#include "BKE_node_tree_update.hh"
 #include "BKE_report.h"
 #include "BKE_scene.h"
 #include "BKE_texture.h"
 
-#include "DEG_depsgraph_build.h"
+#include "DEG_depsgraph_build.hh"
 
-#include "ED_asset.h"
-#include "ED_node.h" /* own include */
-#include "ED_render.h"
-#include "ED_screen.h"
+#include "ED_asset.hh"
+#include "ED_asset_menu_utils.hh"
+#include "ED_node.hh" /* own include */
+#include "ED_render.hh"
+#include "ED_screen.hh"
 
-#include "RNA_access.h"
-#include "RNA_define.h"
-#include "RNA_enum_types.h"
+#include "RNA_access.hh"
+#include "RNA_define.hh"
+#include "RNA_enum_types.hh"
 #include "RNA_prototypes.h"
 
-#include "WM_api.h"
-#include "WM_types.h"
+#include "WM_api.hh"
+#include "WM_types.hh"
 
-#include "UI_view2d.h"
+#include "UI_view2d.hh"
 
 #include "node_intern.hh" /* own include */
 
@@ -55,28 +60,29 @@ namespace blender::ed::space_node {
 
 static void position_node_based_on_mouse(bNode &node, const float2 &location)
 {
-  node.locx = location.x - NODE_DY * 1.5f / UI_DPI_FAC;
-  node.locy = location.y + NODE_DY * 0.5f / UI_DPI_FAC;
+  node.locx = location.x - NODE_DY * 1.5f / UI_SCALE_FAC;
+  node.locy = location.y + NODE_DY * 0.5f / UI_SCALE_FAC;
 }
 
 bNode *add_node(const bContext &C, const StringRef idname, const float2 &location)
 {
   SpaceNode &snode = *CTX_wm_space_node(&C);
   Main &bmain = *CTX_data_main(&C);
+  bNodeTree &node_tree = *snode.edittree;
 
-  node_deselect_all(snode);
+  node_deselect_all(node_tree);
 
   const std::string idname_str = idname;
 
-  bNode *node = nodeAddNode(&C, snode.edittree, idname_str.c_str());
+  bNode *node = nodeAddNode(&C, &node_tree, idname_str.c_str());
   BLI_assert(node && node->typeinfo);
 
   position_node_based_on_mouse(*node, location);
 
   nodeSetSelected(node, true);
-  ED_node_set_active(&bmain, &snode, snode.edittree, node, nullptr);
+  ED_node_set_active(&bmain, &snode, &node_tree, node, nullptr);
 
-  ED_node_tree_propagate_change(&C, &bmain, snode.edittree);
+  ED_node_tree_propagate_change(&C, &bmain, &node_tree);
   return node;
 }
 
@@ -84,18 +90,19 @@ bNode *add_static_node(const bContext &C, int type, const float2 &location)
 {
   SpaceNode &snode = *CTX_wm_space_node(&C);
   Main &bmain = *CTX_data_main(&C);
+  bNodeTree &node_tree = *snode.edittree;
 
-  node_deselect_all(snode);
+  node_deselect_all(node_tree);
 
-  bNode *node = nodeAddStaticNode(&C, snode.edittree, type);
+  bNode *node = nodeAddStaticNode(&C, &node_tree, type);
   BLI_assert(node && node->typeinfo);
 
   position_node_based_on_mouse(*node, location);
 
   nodeSetSelected(node, true);
-  ED_node_set_active(&bmain, &snode, snode.edittree, node, nullptr);
+  ED_node_set_active(&bmain, &snode, &node_tree, node, nullptr);
 
-  ED_node_tree_propagate_change(&C, &bmain, snode.edittree);
+  ED_node_tree_propagate_change(&C, &bmain, &node_tree);
   return node;
 }
 
@@ -152,11 +159,12 @@ static int add_reroute_exec(bContext *C, wmOperator *op)
     return OPERATOR_CANCELLED | OPERATOR_PASS_THROUGH;
   }
 
+  node_deselect_all(ntree);
+
   ntree.ensure_topology_cache();
   const Vector<bNode *> frame_nodes = ntree.nodes_by_type("NodeFrame");
 
   ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
-  node_deselect_all(snode);
 
   /* All link "cuts" that start at a particular output socket. Deduplicating new reroutes per
    * output socket is useful because it allows reusing reroutes for connected intersections.
@@ -167,13 +175,13 @@ static int add_reroute_exec(bContext *C, wmOperator *op)
     if (node_link_is_hidden_or_dimmed(region.v2d, *link)) {
       continue;
     }
-    const std::optional<float2> intersection = link_path_intersection(*link, path);
-    if (!intersection) {
+    const std::optional<float2> cut = link_path_intersection(*link, path);
+    if (!cut) {
       continue;
     }
     RerouteCutsForSocket &from_cuts = cuts_per_socket.lookup_or_add_default(link->fromsock);
     from_cuts.from_node = link->fromnode;
-    from_cuts.links.add(link, *intersection);
+    from_cuts.links.add(link, *cut);
   }
 
   for (const auto item : cuts_per_socket.items()) {
@@ -198,14 +206,14 @@ static int add_reroute_exec(bContext *C, wmOperator *op)
     const float2 insert_point = std::accumulate(
                                     cuts.values().begin(), cuts.values().end(), float2(0)) /
                                 cuts.size();
-    reroute->locx = insert_point.x / UI_DPI_FAC;
-    reroute->locy = insert_point.y / UI_DPI_FAC;
+    reroute->locx = insert_point.x / UI_SCALE_FAC;
+    reroute->locy = insert_point.y / UI_SCALE_FAC;
 
     /* Attach the reroute node to frame nodes behind it. */
     for (const int i : frame_nodes.index_range()) {
       bNode *frame_node = frame_nodes.last(i);
-      if (BLI_rctf_isect_pt_v(&frame_node->totr, insert_point)) {
-        nodeAttachNode(reroute, frame_node);
+      if (BLI_rctf_isect_pt_v(&frame_node->runtime->totr, insert_point)) {
+        nodeAttachNode(&ntree, reroute, frame_node);
         break;
       }
     }
@@ -305,6 +313,11 @@ static int node_add_group_exec(bContext *C, wmOperator *op)
     BKE_report(op->reports, RPT_WARNING, "Could not add node group");
     return OPERATOR_CANCELLED;
   }
+  if (!RNA_boolean_get(op->ptr, "show_datablock_in_node")) {
+    /* By default, don't show the data-block selector since it's not usually necessary for assets.
+     */
+    group_node->flag &= ~NODE_OPTIONS;
+  }
 
   group_node->id = &node_group->id;
   id_us_plus(group_node->id);
@@ -312,6 +325,7 @@ static int node_add_group_exec(bContext *C, wmOperator *op)
 
   nodeSetActive(ntree, group_node);
   ED_node_tree_propagate_change(C, bmain, nullptr);
+  WM_event_add_notifier(C, NC_NODE | NA_ADDED, nullptr);
   DEG_relations_tag_update(bmain);
   return OPERATOR_FINISHED;
 }
@@ -342,8 +356,8 @@ static int node_add_group_invoke(bContext *C, wmOperator *op, const wmEvent *eve
                            &snode->runtime->cursor[0],
                            &snode->runtime->cursor[1]);
 
-  snode->runtime->cursor[0] /= UI_DPI_FAC;
-  snode->runtime->cursor[1] /= UI_DPI_FAC;
+  snode->runtime->cursor[0] /= UI_SCALE_FAC;
+  snode->runtime->cursor[1] /= UI_SCALE_FAC;
 
   return node_add_group_exec(C, op);
 }
@@ -364,6 +378,10 @@ void NODE_OT_add_group(wmOperatorType *ot)
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
   WM_operator_properties_id_lookup(ot, true);
+
+  PropertyRNA *prop = RNA_def_boolean(
+      ot->srna, "show_datablock_in_node", true, "Show the datablock selector in the node", "");
+  RNA_def_property_flag(prop, (PropertyFlag)(PROP_SKIP_SAVE | PROP_HIDDEN));
 }
 
 /** \} */
@@ -373,8 +391,7 @@ void NODE_OT_add_group(wmOperatorType *ot)
  * \{ */
 
 static bool add_node_group_asset(const bContext &C,
-                                 const AssetLibraryReference &library_ref,
-                                 const AssetHandle asset,
+                                 const asset_system::AssetRepresentation &asset,
                                  ReportList &reports)
 {
   Main &bmain = *CTX_data_main(&C);
@@ -382,7 +399,7 @@ static bool add_node_group_asset(const bContext &C,
   bNodeTree &edit_tree = *snode.edittree;
 
   bNodeTree *node_group = reinterpret_cast<bNodeTree *>(
-      asset::get_local_id_from_asset_or_append_and_reuse(bmain, library_ref, asset));
+      asset::asset_local_id_ensure_imported(bmain, asset));
   if (!node_group) {
     return false;
   }
@@ -410,6 +427,7 @@ static bool add_node_group_asset(const bContext &C,
 
   nodeSetActive(&edit_tree, group_node);
   ED_node_tree_propagate_change(&C, &bmain, nullptr);
+  WM_event_add_notifier(&C, NC_NODE | NA_ADDED, nullptr);
   DEG_relations_tag_update(&bmain);
 
   return true;
@@ -420,13 +438,9 @@ static int node_add_group_asset_invoke(bContext *C, wmOperator *op, const wmEven
   ARegion &region = *CTX_wm_region(C);
   SpaceNode &snode = *CTX_wm_space_node(C);
 
-  const AssetLibraryReference *library_ref = CTX_wm_asset_library_ref(C);
-  if (!library_ref) {
-    return OPERATOR_CANCELLED;
-  }
-  bool is_valid;
-  const AssetHandle handle = CTX_wm_asset_handle(C, &is_valid);
-  if (!is_valid) {
+  const asset_system::AssetRepresentation *asset =
+      asset::operator_asset_reference_props_get_asset_from_all_library(*C, *op->ptr, op->reports);
+  if (!asset) {
     return OPERATOR_CANCELLED;
   }
 
@@ -437,9 +451,9 @@ static int node_add_group_asset_invoke(bContext *C, wmOperator *op, const wmEven
                            &snode.runtime->cursor[0],
                            &snode.runtime->cursor[1]);
 
-  snode.runtime->cursor /= UI_DPI_FAC;
+  snode.runtime->cursor /= UI_SCALE_FAC;
 
-  if (!add_node_group_asset(*C, *library_ref, handle, *op->reports)) {
+  if (!add_node_group_asset(*C, *asset, *op->reports)) {
     return OPERATOR_CANCELLED;
   }
 
@@ -453,6 +467,22 @@ static int node_add_group_asset_invoke(bContext *C, wmOperator *op, const wmEven
   return OPERATOR_FINISHED;
 }
 
+static std::string node_add_group_asset_get_description(bContext *C,
+                                                        wmOperatorType * /*ot*/,
+                                                        PointerRNA *values)
+{
+  const asset_system::AssetRepresentation *asset =
+      asset::operator_asset_reference_props_get_asset_from_all_library(*C, *values, nullptr);
+  if (!asset) {
+    return "";
+  }
+  const AssetMetaData &asset_data = asset->get_metadata();
+  if (!asset_data.description) {
+    return "";
+  }
+  return TIP_(asset_data.description);
+}
+
 void NODE_OT_add_group_asset(wmOperatorType *ot)
 {
   ot->name = "Add Node Group Asset";
@@ -461,8 +491,11 @@ void NODE_OT_add_group_asset(wmOperatorType *ot)
 
   ot->invoke = node_add_group_asset_invoke;
   ot->poll = node_add_group_poll;
+  ot->get_description = node_add_group_asset_get_description;
 
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+
+  asset::operator_asset_reference_props_register(*ot->srna);
 }
 
 /** \} */
@@ -521,8 +554,8 @@ static int node_add_object_invoke(bContext *C, wmOperator *op, const wmEvent *ev
                            &snode->runtime->cursor[0],
                            &snode->runtime->cursor[1]);
 
-  snode->runtime->cursor[0] /= UI_DPI_FAC;
-  snode->runtime->cursor[1] /= UI_DPI_FAC;
+  snode->runtime->cursor[0] /= UI_SCALE_FAC;
+  snode->runtime->cursor[1] /= UI_SCALE_FAC;
 
   return node_add_object_exec(C, op);
 }
@@ -530,8 +563,7 @@ static int node_add_object_invoke(bContext *C, wmOperator *op, const wmEvent *ev
 static bool node_add_object_poll(bContext *C)
 {
   const SpaceNode *snode = CTX_wm_space_node(C);
-  return ED_operator_node_editable(C) && ELEM(snode->nodetree->type, NTREE_GEOMETRY) &&
-         !UI_but_active_drop_name(C);
+  return ED_operator_node_editable(C) && ELEM(snode->nodetree->type, NTREE_GEOMETRY);
 }
 
 void NODE_OT_add_object(wmOperatorType *ot)
@@ -608,8 +640,8 @@ static int node_add_collection_invoke(bContext *C, wmOperator *op, const wmEvent
                            &snode->runtime->cursor[0],
                            &snode->runtime->cursor[1]);
 
-  snode->runtime->cursor[0] /= UI_DPI_FAC;
-  snode->runtime->cursor[1] /= UI_DPI_FAC;
+  snode->runtime->cursor[0] /= UI_SCALE_FAC;
+  snode->runtime->cursor[1] /= UI_SCALE_FAC;
 
   return node_add_collection_exec(C, op);
 }
@@ -617,15 +649,14 @@ static int node_add_collection_invoke(bContext *C, wmOperator *op, const wmEvent
 static bool node_add_collection_poll(bContext *C)
 {
   const SpaceNode *snode = CTX_wm_space_node(C);
-  return ED_operator_node_editable(C) && ELEM(snode->nodetree->type, NTREE_GEOMETRY) &&
-         !UI_but_active_drop_name(C);
+  return ED_operator_node_editable(C) && ELEM(snode->nodetree->type, NTREE_GEOMETRY);
 }
 
 void NODE_OT_add_collection(wmOperatorType *ot)
 {
   /* identifiers */
   ot->name = "Add Node Collection";
-  ot->description = "Add an collection info node to the current node editor";
+  ot->description = "Add a collection info node to the current node editor";
   ot->idname = "NODE_OT_add_collection";
 
   /* callbacks */
@@ -699,8 +730,7 @@ static int node_add_file_exec(bContext *C, wmOperator *op)
   }
 
   /* When adding new image file via drag-drop we need to load imbuf in order
-   * to get proper image source.
-   */
+   * to get proper image source. */
   if (RNA_struct_property_is_set(op->ptr, "filepath")) {
     BKE_image_signal(bmain, ima, nullptr, IMA_SIGNAL_RELOAD);
     WM_event_add_notifier(C, NC_IMAGE | NA_EDITED, ima);
@@ -717,18 +747,19 @@ static int node_add_file_invoke(bContext *C, wmOperator *op, const wmEvent *even
   ARegion *region = CTX_wm_region(C);
   SpaceNode *snode = CTX_wm_space_node(C);
 
-  /* convert mouse coordinates to v2d space */
+  /* Convert mouse coordinates to `v2d` space. */
   UI_view2d_region_to_view(&region->v2d,
                            event->mval[0],
                            event->mval[1],
                            &snode->runtime->cursor[0],
                            &snode->runtime->cursor[1]);
 
-  snode->runtime->cursor[0] /= UI_DPI_FAC;
-  snode->runtime->cursor[1] /= UI_DPI_FAC;
+  snode->runtime->cursor[0] /= UI_SCALE_FAC;
+  snode->runtime->cursor[1] /= UI_SCALE_FAC;
 
   if (WM_operator_properties_id_lookup_is_set(op->ptr) ||
-      RNA_struct_property_is_set(op->ptr, "filepath")) {
+      RNA_struct_property_is_set(op->ptr, "filepath"))
+  {
     return node_add_file_exec(C, op);
   }
   return WM_operator_filesel(C, op, event);
@@ -820,6 +851,84 @@ void NODE_OT_add_mask(wmOperatorType *ot)
 /** \} */
 
 /* -------------------------------------------------------------------- */
+/** \name Add Material Operator
+ * \{ */
+
+static int node_add_material_exec(bContext *C, wmOperator *op)
+{
+  Main *bmain = CTX_data_main(C);
+  SpaceNode *snode = CTX_wm_space_node(C);
+  bNodeTree *ntree = snode->edittree;
+
+  Material *material = reinterpret_cast<Material *>(
+      WM_operator_properties_id_lookup_from_name_or_session_uuid(bmain, op->ptr, ID_MA));
+
+  if (!material) {
+    return OPERATOR_CANCELLED;
+  }
+
+  ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
+
+  bNode *material_node = add_static_node(*C, GEO_NODE_INPUT_MATERIAL, snode->runtime->cursor);
+  if (!material_node) {
+    BKE_report(op->reports, RPT_WARNING, "Could not add material");
+    return OPERATOR_CANCELLED;
+  }
+
+  material_node->id = &material->id;
+  id_us_plus(&material->id);
+
+  ED_node_tree_propagate_change(C, bmain, ntree);
+  DEG_relations_tag_update(bmain);
+
+  return OPERATOR_FINISHED;
+}
+
+static int node_add_material_invoke(bContext *C, wmOperator *op, const wmEvent *event)
+{
+  ARegion *region = CTX_wm_region(C);
+  SpaceNode *snode = CTX_wm_space_node(C);
+
+  /* Convert mouse coordinates to v2d space. */
+  UI_view2d_region_to_view(&region->v2d,
+                           event->mval[0],
+                           event->mval[1],
+                           &snode->runtime->cursor[0],
+                           &snode->runtime->cursor[1]);
+
+  snode->runtime->cursor[0] /= UI_SCALE_FAC;
+  snode->runtime->cursor[1] /= UI_SCALE_FAC;
+
+  return node_add_material_exec(C, op);
+}
+
+static bool node_add_material_poll(bContext *C)
+{
+  const SpaceNode *snode = CTX_wm_space_node(C);
+  return ED_operator_node_editable(C) && ELEM(snode->nodetree->type, NTREE_GEOMETRY);
+}
+
+void NODE_OT_add_material(wmOperatorType *ot)
+{
+  /* identifiers */
+  ot->name = "Add Material";
+  ot->description = "Add a material node to the current node editor";
+  ot->idname = "NODE_OT_add_material";
+
+  /* callbacks */
+  ot->exec = node_add_material_exec;
+  ot->invoke = node_add_material_invoke;
+  ot->poll = node_add_material_poll;
+
+  /* flags */
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+
+  WM_operator_properties_id_lookup(ot, true);
+}
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
 /** \name New Node Tree Operator
  * \{ */
 
@@ -828,7 +937,7 @@ static int new_node_tree_exec(bContext *C, wmOperator *op)
   SpaceNode *snode = CTX_wm_space_node(C);
   Main *bmain = CTX_data_main(C);
   bNodeTree *ntree;
-  PointerRNA ptr, idptr;
+  PointerRNA ptr;
   PropertyRNA *prop;
   const char *idname;
   char treename_buf[MAX_ID_NAME - 2];
@@ -845,31 +954,31 @@ static int new_node_tree_exec(bContext *C, wmOperator *op)
     return OPERATOR_CANCELLED;
   }
 
-  if (RNA_struct_property_is_set(op->ptr, "name")) {
-    RNA_string_get(op->ptr, "name", treename_buf);
-    treename = treename_buf;
-  }
-  else {
-    treename = DATA_("NodeTree");
-  }
-
   if (!ntreeTypeFind(idname)) {
     BKE_reportf(op->reports, RPT_ERROR, "Node tree type %s undefined", idname);
     return OPERATOR_CANCELLED;
   }
 
+  if (RNA_struct_property_is_set(op->ptr, "name")) {
+    RNA_string_get(op->ptr, "name", treename_buf);
+    treename = treename_buf;
+  }
+  else {
+    const bNodeTreeType *type = ntreeTypeFind(idname);
+    treename = type->ui_name;
+  }
+
   ntree = ntreeAddTree(bmain, treename, idname);
 
-  /* hook into UI */
+  /* Hook into UI. */
   UI_context_active_but_prop_get_templateID(C, &ptr, &prop);
 
   if (prop) {
-    /* RNA_property_pointer_set increases the user count,
-     * fixed here as the editor is the initial user.
-     */
+    /* #RNA_property_pointer_set increases the user count, fixed here as the editor is the initial
+     * user. */
     id_us_min(&ntree->id);
 
-    RNA_id_pointer_create(&ntree->id, &idptr);
+    PointerRNA idptr = RNA_id_pointer_create(&ntree->id);
     RNA_property_pointer_set(&ptr, prop, idptr, nullptr);
     RNA_property_update(C, &ptr, prop);
   }
@@ -907,42 +1016,9 @@ void NODE_OT_new_node_tree(wmOperatorType *ot)
   /* flags */
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
-  prop = RNA_def_enum(ot->srna, "type", DummyRNA_NULL_items, 0, "Tree Type", "");
+  prop = RNA_def_enum(ot->srna, "type", rna_enum_dummy_NULL_items, 0, "Tree Type", "");
   RNA_def_enum_funcs(prop, new_node_tree_type_itemf);
   RNA_def_string(ot->srna, "name", "NodeTree", MAX_ID_NAME - 2, "Name", "");
-}
-
-/** \} */
-
-/* -------------------------------------------------------------------- */
-/** \name Add Node Search
- * \{ */
-
-static int node_add_search_invoke(bContext *C, wmOperator *op, const wmEvent *event)
-{
-  const ARegion &region = *CTX_wm_region(C);
-
-  float2 cursor;
-  UI_view2d_region_to_view(&region.v2d, event->mval[0], event->mval[1], &cursor.x, &cursor.y);
-
-  invoke_add_node_search_menu(*C, cursor, RNA_boolean_get(op->ptr, "use_transform"));
-
-  return OPERATOR_FINISHED;
-}
-
-void NODE_OT_add_search(wmOperatorType *ot)
-{
-  ot->name = "Search and Add Node";
-  ot->idname = "NODE_OT_add_search";
-  ot->description = "Search for nodes and add one to the active tree";
-
-  ot->invoke = node_add_search_invoke;
-  ot->poll = ED_operator_node_editable;
-
-  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
-
-  RNA_def_boolean(
-      ot->srna, "use_transform", true, "Use Transform", "Start moving the node after adding it");
 }
 
 /** \} */

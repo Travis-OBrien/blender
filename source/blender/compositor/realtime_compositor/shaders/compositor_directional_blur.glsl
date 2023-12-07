@@ -1,3 +1,7 @@
+/* SPDX-FileCopyrightText: 2022-2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
+
 #pragma BLENDER_REQUIRE(gpu_shader_compositor_texture_utilities.glsl)
 
 void main()
@@ -12,7 +16,7 @@ void main()
    * input size, then transform the coordinates for the next iteration. */
   vec4 accumulated_color = vec4(0.0);
   for (int i = 0; i < iterations; i++) {
-    accumulated_color += texture(input_tx, coordinates / input_size);
+    accumulated_color += texture(input_tx, coordinates / vec2(input_size));
     coordinates = (mat3(inverse_transformation) * vec3(coordinates, 1.0)).xy;
   }
 

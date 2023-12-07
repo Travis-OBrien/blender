@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #include "GEO_reverse_uv_sampler.hh"
 
@@ -48,7 +50,7 @@ ReverseUVSampler::Result ReverseUVSampler::sample(const float2 &query_uv) const
 
   float best_dist = FLT_MAX;
   float3 best_bary_weights;
-  const MLoopTri *best_looptri;
+  int best_looptri;
 
   /* The distance to an edge that is allowed to be inside or outside the triangle. Without this,
    * the lookup can fail for floating point accuracy reasons when the uv is almost exact on an
@@ -84,7 +86,7 @@ ReverseUVSampler::Result ReverseUVSampler::sample(const float2 &query_uv) const
     if (dist < best_dist) {
       best_dist = dist;
       best_bary_weights = bary_weights;
-      best_looptri = &looptri;
+      best_looptri = looptri_index;
     }
   }
 

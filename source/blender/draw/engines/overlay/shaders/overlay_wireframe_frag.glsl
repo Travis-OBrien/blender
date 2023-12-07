@@ -1,3 +1,6 @@
+/* SPDX-FileCopyrightText: 2019-2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma BLENDER_REQUIRE(common_view_lib.glsl)
 
@@ -7,6 +10,7 @@ void main()
    * If we could get rid of it would be nice because of performance drain of discard. */
   if (edgeStart.r == -1.0) {
     discard;
+    return;
   }
 
 #ifndef SELECT_EDGES

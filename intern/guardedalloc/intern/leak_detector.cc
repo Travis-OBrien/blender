@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2020-2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /** \file
  * \ingroup intern_mem
@@ -39,6 +41,11 @@ class MemLeakPrinter {
            double(mem_in_use) / 1024 / 1024);
     MEM_printmemlist();
 
+    /* In guarded implementation, the fact that all allocated memory blocks are stored in the
+     * static `membase` listbase is enough for LSAN to not detect them as leaks. Clearing it solves
+     * that issue. */
+    mem_clearmemlist();
+
     if (fail_on_memleak) {
       /* There are many other ways to change the exit code to failure here:
        * - Make the destructor `noexcept(false)` and throw an exception.
@@ -53,6 +60,9 @@ class MemLeakPrinter {
 
 void MEM_init_memleak_detection()
 {
+  /* Calling this ensures that the memory usage counters outlive the memory leak detection. */
+  memory_usage_init();
+
   /**
    * This variable is constructed when this function is first called. This should happen as soon as
    * possible when the program starts.

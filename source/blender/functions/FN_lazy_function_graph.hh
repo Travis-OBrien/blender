@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma once
 
@@ -11,13 +13,17 @@
  * There are two types of nodes in the graph:
  * - #FunctionNode: Corresponds to a #LazyFunction. The inputs and outputs of the function become
  *   input and output sockets of the node.
- * - #DummyNode: Is used to indicate inputs and outputs of the entire graph. It can have an
+ * - #InterfaceNode: Is used to indicate inputs and outputs of the entire graph. It can have an
  *   arbitrary number of sockets.
  */
 
 #include "BLI_linear_allocator.hh"
 
 #include "FN_lazy_function.hh"
+
+namespace blender::dot {
+class DirectedEdge;
+}
 
 namespace blender::fn::lazy_function {
 
@@ -49,6 +55,10 @@ class Socket : NonCopyable, NonMovable {
    * Index of the socket. E.g. 0 for the first input and the first output socket.
    */
   int index_in_node_;
+  /**
+   * Index of the socket in the entire graph. Every socket has a different index.
+   */
+  int index_in_graph_;
 
   friend Graph;
 
@@ -57,6 +67,7 @@ class Socket : NonCopyable, NonMovable {
   bool is_output() const;
 
   int index() const;
+  int index_in_graph() const;
 
   InputSocket &as_input();
   OutputSocket &as_output();
@@ -69,6 +80,7 @@ class Socket : NonCopyable, NonMovable {
   const CPPType &type() const;
 
   std::string name() const;
+  std::string detailed_name() const;
 };
 
 class InputSocket : public Socket {
@@ -114,12 +126,12 @@ class OutputSocket : public Socket {
 };
 
 /**
- * A #Node has input and output sockets. Every node is either a #FunctionNode or a #DummyNode.
+ * A #Node has input and output sockets. Every node is either a #FunctionNode or an #InterfaceNode.
  */
 class Node : NonCopyable, NonMovable {
  protected:
   /**
-   * The function this node corresponds to. If this is null, the node is a #DummyNode.
+   * The function this node corresponds to. If this is null, the node is an #InterfaceNode.
    * The function is not owned by this #Node nor by the #Graph.
    */
   const LazyFunction *fn_ = nullptr;
@@ -142,7 +154,7 @@ class Node : NonCopyable, NonMovable {
   friend Graph;
 
  public:
-  bool is_dummy() const;
+  bool is_interface() const;
   bool is_function() const;
   int index_in_graph() const;
 
@@ -162,7 +174,7 @@ class Node : NonCopyable, NonMovable {
 /**
  * A #Node that corresponds to a specific #LazyFunction.
  */
-class FunctionNode : public Node {
+class FunctionNode final : public Node {
  public:
   const LazyFunction &function() const;
 };
@@ -171,12 +183,21 @@ class FunctionNode : public Node {
  * A #Node that does *not* correspond to a #LazyFunction. Instead it can be used to indicate inputs
  * and outputs of the entire graph. It can have an arbitrary number of inputs and outputs.
  */
-class DummyNode : public Node {
+class InterfaceNode final : public Node {
  private:
-  std::string name_;
-
   friend Node;
+  friend Socket;
+  friend Graph;
+
+  Vector<std::string> socket_names_;
 };
+
+/**
+ * Interface input sockets are actually output sockets on the input node. This renaming makes the
+ * code less confusing.
+ */
+using GraphInputSocket = OutputSocket;
+using GraphOutputSocket = InputSocket;
 
 /**
  * A container for an arbitrary number of nodes and links between their sockets.
@@ -189,16 +210,40 @@ class Graph : NonCopyable, NonMovable {
   LinearAllocator<> allocator_;
   /**
    * Contains all nodes in the graph so that it is efficient to iterate over them.
+   * The first two nodes are the interface input and output nodes.
    */
   Vector<Node *> nodes_;
 
+  InterfaceNode *graph_input_node_ = nullptr;
+  InterfaceNode *graph_output_node_ = nullptr;
+
+  Vector<GraphInputSocket *> graph_inputs_;
+  Vector<GraphOutputSocket *> graph_outputs_;
+
+  /**
+   * Number of sockets in the graph. Can be used as array size when indexing using
+   * `Socket::index_in_graph`.
+   */
+  int socket_num_ = 0;
+
  public:
+  Graph();
   ~Graph();
 
   /**
    * Get all nodes in the graph. The index in the span corresponds to #Node::index_in_graph.
    */
   Span<const Node *> nodes() const;
+  Span<Node *> nodes();
+
+  Span<const FunctionNode *> function_nodes() const;
+  Span<FunctionNode *> function_nodes();
+
+  Span<GraphInputSocket *> graph_inputs();
+  Span<GraphOutputSocket *> graph_outputs();
+
+  Span<const GraphInputSocket *> graph_inputs() const;
+  Span<const GraphOutputSocket *> graph_outputs() const;
 
   /**
    * Add a new function node with sockets that match the passed in #LazyFunction.
@@ -206,9 +251,10 @@ class Graph : NonCopyable, NonMovable {
   FunctionNode &add_function(const LazyFunction &fn);
 
   /**
-   * Add a new dummy node with the given socket types.
+   * Add inputs and outputs to the graph.
    */
-  DummyNode &add_dummy(Span<const CPPType *> input_types, Span<const CPPType *> output_types);
+  GraphInputSocket &add_input(const CPPType &type, std::string name = "");
+  GraphOutputSocket &add_output(const CPPType &type, std::string name = "");
 
   /**
    * Add a link between the two given sockets.
@@ -217,9 +263,23 @@ class Graph : NonCopyable, NonMovable {
   void add_link(OutputSocket &from, InputSocket &to);
 
   /**
+   * If the socket is linked, remove the link.
+   */
+  void clear_origin(InputSocket &socket);
+
+  /**
    * Make sure that #Node::index_in_graph is up to date.
    */
   void update_node_indices();
+  /**
+   * Make sure that #Socket::index_in_graph is up to date.
+   */
+  void update_socket_indices();
+
+  /**
+   * Number of sockets in the graph.
+   */
+  int socket_num() const;
 
   /**
    * Can be used to assert that #update_node_indices has been called.
@@ -227,9 +287,22 @@ class Graph : NonCopyable, NonMovable {
   bool node_indices_are_valid() const;
 
   /**
+   * Optional configuration options for the dot graph generation. This allows creating
+   * visualizations for specific purposes.
+   */
+  class ToDotOptions {
+   public:
+    virtual std::string socket_name(const Socket &socket) const;
+    virtual std::optional<std::string> socket_font_color(const Socket &socket) const;
+    virtual void add_edge_attributes(const OutputSocket &from,
+                                     const InputSocket &to,
+                                     dot::DirectedEdge &dot_edge) const;
+  };
+
+  /**
    * Utility to generate a dot graph string for the graph. This can be used for debugging.
    */
-  std::string to_dot() const;
+  std::string to_dot(const ToDotOptions &options = {}) const;
 };
 
 /* -------------------------------------------------------------------- */
@@ -249,6 +322,11 @@ inline bool Socket::is_output() const
 inline int Socket::index() const
 {
   return index_in_node_;
+}
+
+inline int Socket::index_in_graph() const
+{
+  return index_in_graph_;
 }
 
 inline InputSocket &Socket::as_input()
@@ -338,7 +416,7 @@ inline Span<InputSocket *> OutputSocket::targets()
 /** \name #Node Inline Methods
  * \{ */
 
-inline bool Node::is_dummy() const
+inline bool Node::is_interface() const
 {
   return fn_ == nullptr;
 }
@@ -414,6 +492,46 @@ inline const LazyFunction &FunctionNode::function() const
 inline Span<const Node *> Graph::nodes() const
 {
   return nodes_;
+}
+
+inline Span<Node *> Graph::nodes()
+{
+  return nodes_;
+}
+
+inline Span<const FunctionNode *> Graph::function_nodes() const
+{
+  return nodes_.as_span().drop_front(2).cast<const FunctionNode *>();
+}
+
+inline Span<FunctionNode *> Graph::function_nodes()
+{
+  return nodes_.as_span().drop_front(2).cast<FunctionNode *>();
+}
+
+inline Span<GraphInputSocket *> Graph::graph_inputs()
+{
+  return graph_inputs_;
+}
+
+inline Span<GraphOutputSocket *> Graph::graph_outputs()
+{
+  return graph_outputs_;
+}
+
+inline Span<const GraphInputSocket *> Graph::graph_inputs() const
+{
+  return graph_inputs_;
+}
+
+inline Span<const GraphOutputSocket *> Graph::graph_outputs() const
+{
+  return graph_outputs_;
+}
+
+inline int Graph::socket_num() const
+{
+  return socket_num_;
 }
 
 /** \} */

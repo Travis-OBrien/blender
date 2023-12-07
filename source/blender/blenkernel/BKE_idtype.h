@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later
- * Copyright 2001-2002 NaN Holding BV. All rights reserved. */
+/* SPDX-FileCopyrightText: 2001-2002 NaN Holding BV. All rights reserved.
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma once
 
@@ -17,7 +18,6 @@ extern "C" {
 
 struct BPathForeachPathData;
 struct BlendDataReader;
-struct BlendExpander;
 struct BlendLibReader;
 struct BlendWriter;
 struct ID;
@@ -39,6 +39,15 @@ enum {
   IDTYPE_FLAGS_APPEND_IS_REUSABLE = 1 << 3,
   /** Indicates that the given IDType does not have animation data. */
   IDTYPE_FLAGS_NO_ANIMDATA = 1 << 4,
+  /**
+   * Indicates that the given IDType is not handled through memfile (aka global) undo.
+   *
+   * \note This currently only affect local data-blocks.
+   *
+   * \note Current readfile undo code expects these data-blocks to not be used by any 'regular'
+   * data-blocks.
+   */
+  IDTYPE_FLAGS_NO_MEMFILE_UNDO = 1 << 5,
 };
 
 typedef struct IDCacheKey {
@@ -91,8 +100,7 @@ typedef void (*IDTypeBlendWriteFunction)(struct BlendWriter *writer,
                                          struct ID *id,
                                          const void *id_address);
 typedef void (*IDTypeBlendReadDataFunction)(struct BlendDataReader *reader, struct ID *id);
-typedef void (*IDTypeBlendReadLibFunction)(struct BlendLibReader *reader, struct ID *id);
-typedef void (*IDTypeBlendReadExpandFunction)(struct BlendExpander *expander, struct ID *id);
+typedef void (*IDTypeBlendReadAfterLiblinkFunction)(struct BlendLibReader *reader, struct ID *id);
 
 typedef void (*IDTypeBlendReadUndoPreserve)(struct BlendLibReader *reader,
                                             struct ID *id_new,
@@ -197,19 +205,21 @@ typedef struct IDTypeInfo {
   IDTypeBlendReadDataFunction blend_read_data;
 
   /**
-   * Update pointers to other id data blocks.
+   * Used to do some validation and/or complex processing on the ID after it has been fully read
+   * and its ID pointers have been updated to valid values (lib linking process).
+   *
+   * Note that this is still called _before_ the `do_versions_after_linking` versioning code.
    */
-  IDTypeBlendReadLibFunction blend_read_lib;
-
-  /**
-   * Specify which other id data blocks should be loaded when the current one is loaded.
-   */
-  IDTypeBlendReadExpandFunction blend_read_expand;
+  IDTypeBlendReadAfterLiblinkFunction blend_read_after_liblink;
 
   /**
    * Allow an ID type to preserve some of its data across (memfile) undo steps.
    *
    * \note Called from #setup_app_data when undoing or redoing a memfile step.
+   *
+   * \note In case the whole ID should be fully preserved across undo steps, it is better to flag
+   * its type with `IDTYPE_FLAGS_NO_MEMFILE_UNDO`, since that flag allows more aggressive
+   * optimizations in readfile code for memfile undo.
    */
   IDTypeBlendReadUndoPreserve blend_read_undo_preserve;
 
@@ -250,7 +260,7 @@ extern IDTypeInfo IDType_ID_AC;
 extern IDTypeInfo IDType_ID_NT;
 extern IDTypeInfo IDType_ID_BR;
 extern IDTypeInfo IDType_ID_PA;
-extern IDTypeInfo IDType_ID_GD;
+extern IDTypeInfo IDType_ID_GD_LEGACY;
 extern IDTypeInfo IDType_ID_WM;
 extern IDTypeInfo IDType_ID_MC;
 extern IDTypeInfo IDType_ID_MSK;
@@ -263,7 +273,7 @@ extern IDTypeInfo IDType_ID_LP;
 extern IDTypeInfo IDType_ID_CV;
 extern IDTypeInfo IDType_ID_PT;
 extern IDTypeInfo IDType_ID_VO;
-extern IDTypeInfo IDType_ID_SIM;
+extern IDTypeInfo IDType_ID_GP;
 
 /** Empty shell mostly, but needed for read code. */
 extern IDTypeInfo IDType_ID_LINK_PLACEHOLDER;

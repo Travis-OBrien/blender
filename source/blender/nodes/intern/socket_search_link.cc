@@ -1,10 +1,13 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #include "BLI_set.hh"
 
-#include "BKE_node.h"
+#include "BKE_context.hh"
+#include "BKE_node.hh"
 
-#include "UI_interface.h"
+#include "UI_interface.hh"
 
 #include "BLT_translation.h"
 
@@ -27,6 +30,11 @@ void GatherLinkSearchOpParams::add_item(std::string socket_name,
 const bNodeSocket &GatherLinkSearchOpParams::other_socket() const
 {
   return other_socket_;
+}
+
+const SpaceNode &GatherLinkSearchOpParams::space_node() const
+{
+  return snode_;
 }
 
 const bNodeTree &GatherLinkSearchOpParams::node_tree() const
@@ -55,6 +63,11 @@ void LinkSearchOpParams::connect_available_socket(bNode &new_node, StringRef soc
     return;
   }
   nodeAddLink(&node_tree, &new_node, new_node_socket, &node, &socket);
+  if (in_out == SOCK_OUT) {
+    /* If the old socket already contained a value, then transfer it to a new one, from
+     * which this value will get there. */
+    bke::node_socket_move_default_value(*CTX_data_main(&C), node_tree, socket, *new_node_socket);
+  }
 }
 
 bNode &LinkSearchOpParams::add_node(StringRef idname)
@@ -81,7 +94,7 @@ void LinkSearchOpParams::update_and_connect_available_socket(bNode &new_node,
 }
 
 void search_link_ops_for_declarations(GatherLinkSearchOpParams &params,
-                                      Span<SocketDeclarationPtr> declarations)
+                                      Span<SocketDeclaration *> declarations)
 {
   const bNodeType &node_type = params.node_type();
 
@@ -91,7 +104,7 @@ void search_link_ops_for_declarations(GatherLinkSearchOpParams &params,
   Set<StringRef> socket_names;
   for (const int i : declarations.index_range()) {
     const SocketDeclaration &socket = *declarations[i];
-    if (!socket_names.add(socket.name())) {
+    if (!socket_names.add(socket.name)) {
       /* Don't add sockets with the same name to the search. Needed to support being called from
        * #search_link_ops_for_basic_node, which should have "okay" behavior for nodes with
        * duplicate socket names. */
@@ -100,7 +113,7 @@ void search_link_ops_for_declarations(GatherLinkSearchOpParams &params,
     if (!socket.can_connect(params.other_socket())) {
       continue;
     }
-    if (socket.is_default_link_socket() || main_socket == nullptr) {
+    if (socket.is_default_link_socket || main_socket == nullptr) {
       /* Either the first connectable or explicitly tagged socket is the main socket. */
       main_socket = &socket;
     }
@@ -115,11 +128,11 @@ void search_link_ops_for_declarations(GatherLinkSearchOpParams &params,
      * sockets. */
     const int weight = (&socket == main_socket) ? 0 : -1 - i;
     params.add_item(
-        IFACE_(socket.name().c_str()),
+        IFACE_(socket.name.c_str()),
         [&node_type, &socket](LinkSearchOpParams &params) {
           bNode &node = params.add_node(node_type);
           socket.make_available(node);
-          params.update_and_connect_available_socket(node, socket.name());
+          params.update_and_connect_available_socket(node, socket.name);
         },
         weight);
   }
@@ -128,19 +141,10 @@ void search_link_ops_for_declarations(GatherLinkSearchOpParams &params,
 void search_link_ops_for_basic_node(GatherLinkSearchOpParams &params)
 {
   const bNodeType &node_type = params.node_type();
-  if (!node_type.declare) {
+  if (!node_type.static_declaration) {
     return;
   }
-
-  if (node_type.declaration_is_dynamic) {
-    /* Dynamic declarations (whatever they end up being) aren't supported
-     * by this function, but still avoid a crash in release builds. */
-    BLI_assert_unreachable();
-    return;
-  }
-
-  const NodeDeclaration &declaration = *node_type.fixed_declaration;
-
+  const NodeDeclaration &declaration = *node_type.static_declaration;
   search_link_ops_for_declarations(params, declaration.sockets(params.in_out()));
 }
 

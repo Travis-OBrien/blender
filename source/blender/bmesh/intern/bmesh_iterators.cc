@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /** \file
  * \ingroup bmesh
@@ -13,8 +15,8 @@
 #include "BLI_bitmap.h"
 #include "BLI_utildefines.h"
 
-#include "bmesh.h"
-#include "intern/bmesh_private.h"
+#include "bmesh.hh"
+#include "intern/bmesh_private.hh"
 
 const char bm_iter_itype_htype_map[BM_ITYPE_MAX] = {
     '\0',
@@ -64,7 +66,7 @@ void *BM_iter_at_index(BMesh *bm, const char itype, void *data, int index)
 
   /* sanity check */
   if (index < 0) {
-    return NULL;
+    return nullptr;
   }
 
   val = BM_iter_new(&iter, bm, itype, data);
@@ -112,7 +114,8 @@ int BMO_iter_as_array(BMOpSlot slot_args[BMO_OP_MAX_SLOTS],
     void *ele;
 
     for (ele = BMO_iter_new(&oiter, slot_args, slot_name, restrictmask); ele;
-         ele = BMO_iter_step(&oiter)) {
+         ele = BMO_iter_step(&oiter))
+    {
       array[i] = ele;
       i++;
       if (i == len) {
@@ -167,7 +170,7 @@ void *BM_iter_as_arrayN(BMesh *bm,
   }
 
   *r_len = 0;
-  return NULL;
+  return nullptr;
 }
 
 void *BMO_iter_as_arrayN(BMOpSlot slot_args[BMO_OP_MAX_SLOTS],
@@ -185,7 +188,8 @@ void *BMO_iter_as_arrayN(BMOpSlot slot_args[BMO_OP_MAX_SLOTS],
   BLI_assert(stack_array_size == 0 || (stack_array_size && stack_array));
 
   if ((ele = static_cast<BMElem *>(BMO_iter_new(&iter, slot_args, slot_name, restrictmask))) &&
-      slot_len > 0) {
+      slot_len > 0)
+  {
     BMElem **array = slot_len > stack_array_size ?
                          static_cast<BMElem **>(MEM_mallocN(sizeof(ele) * slot_len, __func__)) :
                          reinterpret_cast<BMElem **>(stack_array);
@@ -206,12 +210,12 @@ void *BMO_iter_as_arrayN(BMOpSlot slot_args[BMO_OP_MAX_SLOTS],
   }
 
   *r_len = 0;
-  return NULL;
+  return nullptr;
 }
 
 int BM_iter_mesh_bitmap_from_filter(const char itype,
                                     BMesh *bm,
-                                    blender::BitVector<> &bitmap,
+                                    blender::MutableBitSpan bitmap,
                                     bool (*test_fn)(BMElem *, void *user_data),
                                     void *user_data)
 {
@@ -234,7 +238,7 @@ int BM_iter_mesh_bitmap_from_filter(const char itype,
 }
 
 int BM_iter_mesh_bitmap_from_filter_tessface(BMesh *bm,
-                                             blender::BitVector<> &bitmap,
+                                             blender::MutableBitSpan bitmap,
                                              bool (*test_fn)(BMFace *, void *user_data),
                                              void *user_data)
 {
@@ -341,7 +345,7 @@ int BM_iter_mesh_count_flag(const char itype, BMesh *bm, const char hflag, const
  * When a step() callback is invoked the current value of 'next'
  * is stored to be returned later and the next variable is incremented.
  *
- * When the end of a sequence is reached, next should always equal NULL
+ * When the end of a sequence is reached, next should always equal nullptr
  *
  * The 'bmiter__' prefix is used because these are used in
  * bmesh_iterators_inine.c but should otherwise be seen as
@@ -352,15 +356,15 @@ int BM_iter_mesh_count_flag(const char itype, BMesh *bm, const char hflag, const
  * VERT OF MESH CALLBACKS
  */
 
-/* see bug T36923 for why we need this,
+/* see bug #36923 for why we need this,
  * allow adding but not removing, this isn't _totally_ safe since
  * you could add/remove within the same loop, but catches common cases
  */
-#ifdef DEBUG
+#ifndef NDEBUG
 #  define USE_IMMUTABLE_ASSERT
 #endif
 
-void bmiter__elem_of_mesh_begin(struct BMIter__elem_of_mesh *iter)
+void bmiter__elem_of_mesh_begin(BMIter__elem_of_mesh *iter)
 {
 #ifdef USE_IMMUTABLE_ASSERT
   ((BMIter *)iter)->count = BLI_mempool_len(iter->pooliter.pool);
@@ -368,7 +372,7 @@ void bmiter__elem_of_mesh_begin(struct BMIter__elem_of_mesh *iter)
   BLI_mempool_iternew(iter->pooliter.pool, &iter->pooliter);
 }
 
-void *bmiter__elem_of_mesh_step(struct BMIter__elem_of_mesh *iter)
+void *bmiter__elem_of_mesh_step(BMIter__elem_of_mesh *iter)
 {
 #ifdef USE_IMMUTABLE_ASSERT
   BLI_assert(((BMIter *)iter)->count <= BLI_mempool_len(iter->pooliter.pool));
@@ -384,26 +388,26 @@ void *bmiter__elem_of_mesh_step(struct BMIter__elem_of_mesh *iter)
  * EDGE OF VERT CALLBACKS
  */
 
-void bmiter__edge_of_vert_begin(struct BMIter__edge_of_vert *iter)
+void bmiter__edge_of_vert_begin(BMIter__edge_of_vert *iter)
 {
   if (iter->vdata->e) {
     iter->e_first = iter->vdata->e;
     iter->e_next = iter->vdata->e;
   }
   else {
-    iter->e_first = NULL;
-    iter->e_next = NULL;
+    iter->e_first = nullptr;
+    iter->e_next = nullptr;
   }
 }
 
-void *bmiter__edge_of_vert_step(struct BMIter__edge_of_vert *iter)
+void *bmiter__edge_of_vert_step(BMIter__edge_of_vert *iter)
 {
   BMEdge *e_curr = iter->e_next;
 
   if (iter->e_next) {
     iter->e_next = bmesh_disk_edge_next(iter->e_next, iter->vdata);
     if (iter->e_next == iter->e_first) {
-      iter->e_next = NULL;
+      iter->e_next = nullptr;
     }
   }
 
@@ -414,7 +418,7 @@ void *bmiter__edge_of_vert_step(struct BMIter__edge_of_vert *iter)
  * FACE OF VERT CALLBACKS
  */
 
-void bmiter__face_of_vert_begin(struct BMIter__face_of_vert *iter)
+void bmiter__face_of_vert_begin(BMIter__face_of_vert *iter)
 {
   ((BMIter *)iter)->count = bmesh_disk_facevert_count(iter->vdata);
   if (((BMIter *)iter)->count) {
@@ -424,11 +428,11 @@ void bmiter__face_of_vert_begin(struct BMIter__face_of_vert *iter)
     iter->l_next = iter->l_first;
   }
   else {
-    iter->l_first = iter->l_next = NULL;
-    iter->e_first = iter->e_next = NULL;
+    iter->l_first = iter->l_next = nullptr;
+    iter->e_first = iter->e_next = nullptr;
   }
 }
-void *bmiter__face_of_vert_step(struct BMIter__face_of_vert *iter)
+void *bmiter__face_of_vert_step(BMIter__face_of_vert *iter)
 {
   BMLoop *l_curr = iter->l_next;
 
@@ -443,17 +447,17 @@ void *bmiter__face_of_vert_step(struct BMIter__face_of_vert *iter)
   }
 
   if (!((BMIter *)iter)->count) {
-    iter->l_next = NULL;
+    iter->l_next = nullptr;
   }
 
-  return l_curr ? l_curr->f : NULL;
+  return l_curr ? l_curr->f : nullptr;
 }
 
 /*
  * LOOP OF VERT CALLBACKS
  */
 
-void bmiter__loop_of_vert_begin(struct BMIter__loop_of_vert *iter)
+void bmiter__loop_of_vert_begin(BMIter__loop_of_vert *iter)
 {
   ((BMIter *)iter)->count = bmesh_disk_facevert_count(iter->vdata);
   if (((BMIter *)iter)->count) {
@@ -463,11 +467,11 @@ void bmiter__loop_of_vert_begin(struct BMIter__loop_of_vert *iter)
     iter->l_next = iter->l_first;
   }
   else {
-    iter->l_first = iter->l_next = NULL;
-    iter->e_first = iter->e_next = NULL;
+    iter->l_first = iter->l_next = nullptr;
+    iter->e_first = iter->e_next = nullptr;
   }
 }
-void *bmiter__loop_of_vert_step(struct BMIter__loop_of_vert *iter)
+void *bmiter__loop_of_vert_step(BMIter__loop_of_vert *iter)
 {
   BMLoop *l_curr = iter->l_next;
 
@@ -482,10 +486,10 @@ void *bmiter__loop_of_vert_step(struct BMIter__loop_of_vert *iter)
   }
 
   if (!((BMIter *)iter)->count) {
-    iter->l_next = NULL;
+    iter->l_next = nullptr;
   }
 
-  /* NULL on finish */
+  /* nullptr on finish */
   return l_curr;
 }
 
@@ -493,23 +497,23 @@ void *bmiter__loop_of_vert_step(struct BMIter__loop_of_vert *iter)
  * LOOP OF EDGE CALLBACKS
  */
 
-void bmiter__loop_of_edge_begin(struct BMIter__loop_of_edge *iter)
+void bmiter__loop_of_edge_begin(BMIter__loop_of_edge *iter)
 {
   iter->l_first = iter->l_next = iter->edata->l;
 }
 
-void *bmiter__loop_of_edge_step(struct BMIter__loop_of_edge *iter)
+void *bmiter__loop_of_edge_step(BMIter__loop_of_edge *iter)
 {
   BMLoop *l_curr = iter->l_next;
 
   if (iter->l_next) {
     iter->l_next = iter->l_next->radial_next;
     if (iter->l_next == iter->l_first) {
-      iter->l_next = NULL;
+      iter->l_next = nullptr;
     }
   }
 
-  /* NULL on finish */
+  /* nullptr on finish */
   return l_curr;
 }
 
@@ -517,28 +521,28 @@ void *bmiter__loop_of_edge_step(struct BMIter__loop_of_edge *iter)
  * LOOP OF LOOP CALLBACKS
  */
 
-void bmiter__loop_of_loop_begin(struct BMIter__loop_of_loop *iter)
+void bmiter__loop_of_loop_begin(BMIter__loop_of_loop *iter)
 {
   iter->l_first = iter->ldata;
   iter->l_next = iter->l_first->radial_next;
 
   if (iter->l_next == iter->l_first) {
-    iter->l_next = NULL;
+    iter->l_next = nullptr;
   }
 }
 
-void *bmiter__loop_of_loop_step(struct BMIter__loop_of_loop *iter)
+void *bmiter__loop_of_loop_step(BMIter__loop_of_loop *iter)
 {
   BMLoop *l_curr = iter->l_next;
 
   if (iter->l_next) {
     iter->l_next = iter->l_next->radial_next;
     if (iter->l_next == iter->l_first) {
-      iter->l_next = NULL;
+      iter->l_next = nullptr;
     }
   }
 
-  /* NULL on finish */
+  /* nullptr on finish */
   return l_curr;
 }
 
@@ -546,35 +550,35 @@ void *bmiter__loop_of_loop_step(struct BMIter__loop_of_loop *iter)
  * FACE OF EDGE CALLBACKS
  */
 
-void bmiter__face_of_edge_begin(struct BMIter__face_of_edge *iter)
+void bmiter__face_of_edge_begin(BMIter__face_of_edge *iter)
 {
   iter->l_first = iter->l_next = iter->edata->l;
 }
 
-void *bmiter__face_of_edge_step(struct BMIter__face_of_edge *iter)
+void *bmiter__face_of_edge_step(BMIter__face_of_edge *iter)
 {
   BMLoop *current = iter->l_next;
 
   if (iter->l_next) {
     iter->l_next = iter->l_next->radial_next;
     if (iter->l_next == iter->l_first) {
-      iter->l_next = NULL;
+      iter->l_next = nullptr;
     }
   }
 
-  return current ? current->f : NULL;
+  return current ? current->f : nullptr;
 }
 
 /*
  * VERTS OF EDGE CALLBACKS
  */
 
-void bmiter__vert_of_edge_begin(struct BMIter__vert_of_edge *iter)
+void bmiter__vert_of_edge_begin(BMIter__vert_of_edge *iter)
 {
   ((BMIter *)iter)->count = 0;
 }
 
-void *bmiter__vert_of_edge_step(struct BMIter__vert_of_edge *iter)
+void *bmiter__vert_of_edge_step(BMIter__vert_of_edge *iter)
 {
   switch (((BMIter *)iter)->count++) {
     case 0:
@@ -582,7 +586,7 @@ void *bmiter__vert_of_edge_step(struct BMIter__vert_of_edge *iter)
     case 1:
       return iter->edata->v2;
     default:
-      return NULL;
+      return nullptr;
   }
 }
 
@@ -590,65 +594,65 @@ void *bmiter__vert_of_edge_step(struct BMIter__vert_of_edge *iter)
  * VERT OF FACE CALLBACKS
  */
 
-void bmiter__vert_of_face_begin(struct BMIter__vert_of_face *iter)
+void bmiter__vert_of_face_begin(BMIter__vert_of_face *iter)
 {
   iter->l_first = iter->l_next = BM_FACE_FIRST_LOOP(iter->pdata);
 }
 
-void *bmiter__vert_of_face_step(struct BMIter__vert_of_face *iter)
+void *bmiter__vert_of_face_step(BMIter__vert_of_face *iter)
 {
   BMLoop *l_curr = iter->l_next;
 
   if (iter->l_next) {
     iter->l_next = iter->l_next->next;
     if (iter->l_next == iter->l_first) {
-      iter->l_next = NULL;
+      iter->l_next = nullptr;
     }
   }
 
-  return l_curr ? l_curr->v : NULL;
+  return l_curr ? l_curr->v : nullptr;
 }
 
 /*
  * EDGE OF FACE CALLBACKS
  */
 
-void bmiter__edge_of_face_begin(struct BMIter__edge_of_face *iter)
+void bmiter__edge_of_face_begin(BMIter__edge_of_face *iter)
 {
   iter->l_first = iter->l_next = BM_FACE_FIRST_LOOP(iter->pdata);
 }
 
-void *bmiter__edge_of_face_step(struct BMIter__edge_of_face *iter)
+void *bmiter__edge_of_face_step(BMIter__edge_of_face *iter)
 {
   BMLoop *l_curr = iter->l_next;
 
   if (iter->l_next) {
     iter->l_next = iter->l_next->next;
     if (iter->l_next == iter->l_first) {
-      iter->l_next = NULL;
+      iter->l_next = nullptr;
     }
   }
 
-  return l_curr ? l_curr->e : NULL;
+  return l_curr ? l_curr->e : nullptr;
 }
 
 /*
  * LOOP OF FACE CALLBACKS
  */
 
-void bmiter__loop_of_face_begin(struct BMIter__loop_of_face *iter)
+void bmiter__loop_of_face_begin(BMIter__loop_of_face *iter)
 {
   iter->l_first = iter->l_next = BM_FACE_FIRST_LOOP(iter->pdata);
 }
 
-void *bmiter__loop_of_face_step(struct BMIter__loop_of_face *iter)
+void *bmiter__loop_of_face_step(BMIter__loop_of_face *iter)
 {
   BMLoop *l_curr = iter->l_next;
 
   if (iter->l_next) {
     iter->l_next = iter->l_next->next;
     if (iter->l_next == iter->l_first) {
-      iter->l_next = NULL;
+      iter->l_next = nullptr;
     }
   }
 

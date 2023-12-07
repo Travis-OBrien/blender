@@ -1,5 +1,6 @@
+# SPDX-FileCopyrightText: 2011-2022 Blender Foundation
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2011-2022 Blender Foundation
 
 # Standalone or with Blender
 if(NOT WITH_BLENDER)
@@ -36,7 +37,10 @@ if(WITH_CYCLES_NATIVE_ONLY)
   )
 
   if(NOT MSVC)
-    add_check_cxx_compiler_flag(CMAKE_CXX_FLAGS _has_march_native "-march=native")
+    add_check_cxx_compiler_flags(
+      CMAKE_CXX_FLAGS
+      _has_march_native "-march=native"
+    )
     if(_has_march_native)
       set(CYCLES_KERNEL_FLAGS "-march=native")
     else()
@@ -82,18 +86,21 @@ elseif(WIN32 AND MSVC AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   # grained control and the speedup we get here is too big to ignore.
   set(CYCLES_KERNEL_FLAGS "/fp:fast -D_CRT_SECURE_NO_WARNINGS /GS-")
 
+  # "jumptablerdata" improves performance when there is contention in large switch statements such as in svm.h
+  # This flag is supported starting with MSVC 17.7 preview 3:
+  # https://learn.microsoft.com/en-us/cpp/build/reference/jump-table-rdata
+  if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.37.32820)
+    string(APPEND CYCLES_KERNEL_FLAGS " /jumptablerdata")
+  endif()
+
   # there is no /arch:SSE3, but intrinsics are available anyway
   if(CMAKE_CL_64)
     set(CYCLES_SSE2_KERNEL_FLAGS "${CYCLES_KERNEL_FLAGS}")
-    set(CYCLES_SSE3_KERNEL_FLAGS "${CYCLES_KERNEL_FLAGS}")
     set(CYCLES_SSE41_KERNEL_FLAGS "${CYCLES_KERNEL_FLAGS}")
-    set(CYCLES_AVX_KERNEL_FLAGS "${CYCLES_AVX_ARCH_FLAGS} ${CYCLES_KERNEL_FLAGS}")
     set(CYCLES_AVX2_KERNEL_FLAGS "${CYCLES_AVX2_ARCH_FLAGS} ${CYCLES_KERNEL_FLAGS}")
   else()
     set(CYCLES_SSE2_KERNEL_FLAGS "/arch:SSE2 ${CYCLES_KERNEL_FLAGS}")
-    set(CYCLES_SSE3_KERNEL_FLAGS "/arch:SSE2 ${CYCLES_KERNEL_FLAGS}")
     set(CYCLES_SSE41_KERNEL_FLAGS "/arch:SSE2 ${CYCLES_KERNEL_FLAGS}")
-    set(CYCLES_AVX_KERNEL_FLAGS "${CYCLES_AVX_ARCH_FLAGS} ${CYCLES_KERNEL_FLAGS}")
     set(CYCLES_AVX2_KERNEL_FLAGS "${CYCLES_AVX2_ARCH_FLAGS} ${CYCLES_KERNEL_FLAGS}")
   endif()
 
@@ -126,11 +133,7 @@ elseif(CMAKE_COMPILER_IS_GNUCC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
     endif()
 
     set(CYCLES_SSE2_KERNEL_FLAGS "${CYCLES_KERNEL_FLAGS} -msse -msse2")
-    set(CYCLES_SSE3_KERNEL_FLAGS "${CYCLES_SSE2_KERNEL_FLAGS} -msse3 -mssse3")
-    set(CYCLES_SSE41_KERNEL_FLAGS "${CYCLES_SSE3_KERNEL_FLAGS} -msse4.1")
-    if(CXX_HAS_AVX)
-      set(CYCLES_AVX_KERNEL_FLAGS "${CYCLES_SSE41_KERNEL_FLAGS} -mavx")
-    endif()
+    set(CYCLES_SSE41_KERNEL_FLAGS "${CYCLES_SSE2_KERNEL_FLAGS} -msse3 -mssse3 -msse4.1")
     if(CXX_HAS_AVX2)
       set(CYCLES_AVX2_KERNEL_FLAGS "${CYCLES_SSE41_KERNEL_FLAGS} -mavx -mavx2 -mfma -mlzcnt -mbmi -mbmi2 -mf16c")
     endif()
@@ -144,12 +147,7 @@ elseif(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 
   if(CXX_HAS_SSE)
     set(CYCLES_SSE2_KERNEL_FLAGS "/QxSSE2")
-    set(CYCLES_SSE3_KERNEL_FLAGS "/QxSSSE3")
     set(CYCLES_SSE41_KERNEL_FLAGS "/QxSSE4.1")
-
-    if(CXX_HAS_AVX)
-      set(CYCLES_AVX_KERNEL_FLAGS "/arch:AVX")
-    endif()
 
     if(CXX_HAS_AVX2)
       set(CYCLES_AVX2_KERNEL_FLAGS "/QxCORE-AVX2")
@@ -174,12 +172,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Intel")
       set(CYCLES_SSE2_KERNEL_FLAGS "-xsse2")
     endif()
 
-    set(CYCLES_SSE3_KERNEL_FLAGS "-xssse3")
     set(CYCLES_SSE41_KERNEL_FLAGS "-xsse4.1")
-
-    if(CXX_HAS_AVX)
-      set(CYCLES_AVX_KERNEL_FLAGS "-xavx")
-    endif()
 
     if(CXX_HAS_AVX2)
       set(CYCLES_AVX2_KERNEL_FLAGS "-xcore-avx2")
@@ -190,13 +183,8 @@ endif()
 if(CXX_HAS_SSE)
   add_definitions(
     -DWITH_KERNEL_SSE2
-    -DWITH_KERNEL_SSE3
     -DWITH_KERNEL_SSE41
   )
-endif()
-
-if(CXX_HAS_AVX)
-  add_definitions(-DWITH_KERNEL_AVX)
 endif()
 
 if(CXX_HAS_AVX2)
@@ -214,7 +202,6 @@ endif()
 
 add_definitions(
   ${BOOST_DEFINITIONS}
-  ${OPENIMAGEIO_DEFINITIONS}
 )
 
 add_definitions(
@@ -253,6 +240,40 @@ if(WITH_CYCLES_OSL)
   )
 endif()
 
+if(WITH_CYCLES_DEVICE_CUDA OR WITH_CYCLES_DEVICE_OPTIX)
+  add_definitions(-DWITH_CUDA)
+
+  if(WITH_CUDA_DYNLOAD)
+    include_directories(
+      ../../extern/cuew/include
+    )
+    add_definitions(-DWITH_CUDA_DYNLOAD)
+  else()
+    include_directories(
+      SYSTEM
+      ${CUDA_TOOLKIT_INCLUDE}
+    )
+  endif()
+endif()
+
+if(WITH_CYCLES_DEVICE_HIP)
+  add_definitions(-DWITH_HIP)
+
+  if(WITH_CYCLES_DEVICE_HIPRT)
+    include_directories(
+      ${HIPRT_INCLUDE_DIR}
+    )
+    add_definitions(-DWITH_HIPRT)
+  endif()
+
+  if(WITH_HIP_DYNLOAD)
+    include_directories(
+      ../../extern/hipew/include
+    )
+    add_definitions(-DWITH_HIP_DYNLOAD)
+  endif()
+endif()
+
 if(WITH_CYCLES_DEVICE_OPTIX)
   find_package(OptiX 7.3.0)
 
@@ -261,18 +282,26 @@ if(WITH_CYCLES_DEVICE_OPTIX)
     include_directories(
       SYSTEM
       ${OPTIX_INCLUDE_DIR}
-      )
+    )
   else()
     set_and_warn_library_found("OptiX" OPTIX_FOUND WITH_CYCLES_DEVICE_OPTIX)
   endif()
 endif()
 
-if (WITH_CYCLES_DEVICE_ONEAPI)
+if(WITH_CYCLES_DEVICE_METAL)
+  add_definitions(-DWITH_METAL)
+endif()
+
+if(WITH_CYCLES_DEVICE_ONEAPI)
   add_definitions(-DWITH_ONEAPI)
 endif()
 
 if(WITH_CYCLES_EMBREE)
   add_definitions(-DWITH_EMBREE)
+  if(WITH_CYCLES_DEVICE_ONEAPI AND EMBREE_SYCL_SUPPORT)
+    add_definitions(-DWITH_EMBREE_GPU)
+  endif()
+  add_definitions(-DEMBREE_MAJOR_VERSION=${EMBREE_MAJOR_VERSION})
   include_directories(
     SYSTEM
     ${EMBREE_INCLUDE_DIRS}
@@ -381,8 +410,15 @@ endif()
 
 # Warnings
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_C_COMPILER_ID MATCHES "Clang")
-  add_check_cxx_compiler_flag(CMAKE_CXX_FLAGS _has_no_error_unused_macros "-Wno-error=unused-macros")
+  add_check_cxx_compiler_flags(
+    CMAKE_CXX_FLAGS
+    _has_no_error_unused_macros "-Wno-error=unused-macros"
+  )
   unset(_has_no_error_unused_macros)
+endif()
+
+if(WITH_USD)
+  add_definitions(-DWITH_USD)
 endif()
 
 if(WITH_CYCLES_HYDRA_RENDER_DELEGATE AND (NOT WITH_USD))
@@ -392,7 +428,7 @@ if(WITH_CYCLES_HYDRA_RENDER_DELEGATE AND (NOT WITH_BLENDER) AND (NOT WITH_CYCLES
   set(CYCLES_INSTALL_PATH ${CYCLES_INSTALL_PATH}/hdCycles/resources)
 endif()
 
-if(WITH_CYCLES_CUDA_BINARIES AND (NOT WITH_CYCLES_CUBIN_COMPILER))
+if(WITH_CYCLES_CUDA_BINARIES)
   if(MSVC)
     set(MAX_MSVC 1800)
     if(${CUDA_VERSION} EQUAL "8.0")
@@ -404,24 +440,7 @@ if(WITH_CYCLES_CUDA_BINARIES AND (NOT WITH_CYCLES_CUBIN_COMPILER))
     elseif(${CUDA_VERSION} VERSION_GREATER_EQUAL 10.0)
       set(MAX_MSVC 1999)
     endif()
-    if(NOT MSVC_VERSION LESS ${MAX_MSVC} OR CMAKE_C_COMPILER_ID MATCHES "Clang")
-      message(STATUS "nvcc not supported for this compiler version, using cycles_cubin_cc instead.")
-      set(WITH_CYCLES_CUBIN_COMPILER ON)
-    endif()
     unset(MAX_MSVC)
-  elseif(APPLE)
-    if(NOT (${XCODE_VERSION} VERSION_LESS 10.0))
-      message(STATUS "nvcc not supported for this compiler version, using cycles_cubin_cc instead.")
-      set(WITH_CYCLES_CUBIN_COMPILER ON)
-    endif()
-  endif()
-endif()
-
-# NVRTC gives wrong rendering result in CUDA 10.0, so we must use NVCC.
-if(WITH_CYCLES_CUDA_BINARIES AND WITH_CYCLES_CUBIN_COMPILER AND NOT WITH_CYCLES_CUBIN_COMPILER_OVERRRIDE)
-  if(NOT (${CUDA_VERSION} VERSION_LESS 10.0))
-    message(STATUS "cycles_cubin_cc not supported for CUDA 10.0+, using nvcc instead.")
-    set(WITH_CYCLES_CUBIN_COMPILER OFF)
   endif()
 endif()
 

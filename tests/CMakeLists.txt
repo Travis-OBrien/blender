@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2014-2023 Blender Authors
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 # Always run tests from install path, so all required scripts and libraries
@@ -25,17 +27,19 @@ endif()
 # To suit different needs, the user can pass `-DTEST_PYTHON_EXE=/path/to/python` to CMake.
 if(NOT TEST_PYTHON_EXE)
   set(TEST_PYTHON_EXE ${PYTHON_EXECUTABLE})
-  message(STATUS "Tests: Using Python executable: ${TEST_PYTHON_EXE}")
+  if(FIRST_RUN)
+    message(STATUS "Tests: Using Python executable: ${TEST_PYTHON_EXE}")
+  endif()
 elseif(NOT EXISTS ${TEST_PYTHON_EXE})
   message(FATAL_ERROR "Tests: TEST_PYTHON_EXE ${TEST_PYTHON_EXE} does not exist")
 endif()
 
 
 # Include these arguments before all others, they must not interfere with Python execution.
-set(TEST_PYTHON_EXE_EXTRA_ARGS)
+set(TEST_PYTHON_EXE_EXTRA_ARGS "")
 
 # Check if this a Blender managed Python installation, if so, don't add `*.pyc` files.
-if(LIBDIR)
+if(DEFINED LIBDIR)
   path_is_prefix(LIBDIR TEST_PYTHON_EXE _is_prefix)
   if(_is_prefix)
     # Keep the Python in Blender's SVN LIBDIR pristine, to avoid conflicts on updating.

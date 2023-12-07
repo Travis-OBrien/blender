@@ -1,14 +1,17 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /** \file
  * \ingroup asset_system
  */
 
 #include <fstream>
+#include <iostream>
 #include <set>
 
 #include "AS_asset_catalog.hh"
-#include "AS_asset_library.h"
+#include "AS_asset_catalog_tree.hh"
 #include "AS_asset_library.hh"
 
 #include "BLI_fileops.hh"
@@ -18,6 +21,8 @@
 #ifdef WIN32
 #  include "BLI_winstuff.h"
 #endif
+
+#include "asset_library_service.hh"
 
 #include "CLG_log.h"
 
@@ -38,18 +43,26 @@ const std::string AssetCatalogDefinitionFile::HEADER =
     "# Other lines are of the format \"UUID:catalog/path/for/assets:simple catalog name\"\n";
 
 AssetCatalogService::AssetCatalogService()
-    : catalog_collection_(std::make_unique<AssetCatalogCollection>())
+    : catalog_collection_(std::make_unique<AssetCatalogCollection>()),
+      catalog_tree_(std::make_unique<AssetCatalogTree>())
 {
 }
 
-AssetCatalogService::AssetCatalogService(const CatalogFilePath &asset_library_root)
-    : catalog_collection_(std::make_unique<AssetCatalogCollection>()),
-      asset_library_root_(asset_library_root)
+AssetCatalogService::AssetCatalogService(read_only_tag) : AssetCatalogService()
 {
+  const_cast<bool &>(is_read_only_) = true;
+}
+
+AssetCatalogService::AssetCatalogService(const CatalogFilePath &asset_library_root)
+    : AssetCatalogService()
+{
+  asset_library_root_ = asset_library_root;
 }
 
 void AssetCatalogService::tag_has_unsaved_changes(AssetCatalog *edited_catalog)
 {
+  BLI_assert(!is_read_only_);
+
   if (edited_catalog) {
     edited_catalog->flags.has_unsaved_changes = true;
   }
@@ -82,6 +95,11 @@ bool AssetCatalogService::has_unsaved_changes() const
 {
   BLI_assert(catalog_collection_);
   return catalog_collection_->has_unsaved_changes_;
+}
+
+bool AssetCatalogService::is_read_only() const
+{
+  return is_read_only_;
 }
 
 void AssetCatalogService::tag_all_catalogs_as_unsaved_changes()
@@ -220,6 +238,7 @@ void AssetCatalogService::prune_catalogs_by_path(const AssetCatalogPath &path)
   }
 
   this->rebuild_tree();
+  AssetLibraryService::get()->rebuild_all_library();
 }
 
 void AssetCatalogService::prune_catalogs_by_id(const CatalogID catalog_id)
@@ -247,12 +266,14 @@ void AssetCatalogService::update_catalog_path(const CatalogID catalog_id,
     }
     cat->path = new_path;
     cat->simple_name_refresh();
+    this->tag_has_unsaved_changes(cat);
 
     /* TODO(Sybren): go over all assets that are assigned to this catalog, defined in the current
      * blend file, and update the catalog simple name stored there. */
   }
 
   this->rebuild_tree();
+  AssetLibraryService::get()->rebuild_all_library();
 }
 
 AssetCatalog *AssetCatalogService::create_catalog(const AssetCatalogPath &catalog_path)
@@ -278,6 +299,8 @@ AssetCatalog *AssetCatalogService::create_catalog(const AssetCatalogPath &catalo
 
   BLI_assert_msg(catalog_tree_, "An Asset Catalog tree should always exist.");
   catalog_tree_->insert_item(*catalog_ptr);
+
+  AssetLibraryService::get()->rebuild_all_library();
 
   return catalog_ptr;
 }
@@ -319,6 +342,11 @@ void AssetCatalogService::load_from_disk(const CatalogFilePath &file_or_director
   /* TODO: Should there be a sanitize step? E.g. to remove catalogs with identical paths? */
 
   rebuild_tree();
+}
+
+void AssetCatalogService::add_from_existing(const AssetCatalogService &other_service)
+{
+  catalog_collection_->add_catalogs_from_existing(*other_service.catalog_collection_);
 }
 
 void AssetCatalogService::load_directory_recursive(const CatalogFilePath &directory_path)
@@ -451,6 +479,8 @@ bool AssetCatalogService::is_catalog_known_with_unsaved_changes(const CatalogID 
 
 bool AssetCatalogService::write_to_disk(const CatalogFilePath &blend_file_path)
 {
+  BLI_assert(!is_read_only_);
+
   if (!write_to_disk_ex(blend_file_path)) {
     return false;
   }
@@ -521,7 +551,7 @@ CatalogFilePath AssetCatalogService::find_suitable_cdf_path_for_writing(
 
   /* Determine the default CDF path in the same directory of the blend file. */
   char blend_dir_path[PATH_MAX];
-  BLI_split_dir_part(blend_file_path.c_str(), blend_dir_path, sizeof(blend_dir_path));
+  BLI_path_split_dir_part(blend_file_path.c_str(), blend_dir_path, sizeof(blend_dir_path));
   const CatalogFilePath cdf_path_next_to_blend = asset_definition_default_file_path_from_dir(
       blend_dir_path);
   return cdf_path_next_to_blend;
@@ -620,19 +650,23 @@ void AssetCatalogService::undo()
   redo_snapshots_.append(std::move(catalog_collection_));
   catalog_collection_ = undo_snapshots_.pop_last();
   rebuild_tree();
+  AssetLibraryService::get()->rebuild_all_library();
 }
 
 void AssetCatalogService::redo()
 {
+  BLI_assert(!is_read_only_);
   BLI_assert_msg(is_redo_possbile(), "Redo stack is empty");
 
   undo_snapshots_.append(std::move(catalog_collection_));
   catalog_collection_ = redo_snapshots_.pop_last();
   rebuild_tree();
+  AssetLibraryService::get()->rebuild_all_library();
 }
 
 void AssetCatalogService::undo_push()
 {
+  BLI_assert(!is_read_only_);
   std::unique_ptr<AssetCatalogCollection> snapshot = catalog_collection_->deep_copy();
   undo_snapshots_.append(std::move(snapshot));
   redo_snapshots_.clear();
@@ -656,173 +690,26 @@ std::unique_ptr<AssetCatalogCollection> AssetCatalogCollection::deep_copy() cons
   return copy;
 }
 
+static void copy_catalog_map_into_existing(const OwningAssetCatalogMap &source,
+                                           OwningAssetCatalogMap &dest)
+{
+  for (const auto &orig_catalog_uptr : source.values()) {
+    auto copy_catalog_uptr = std::make_unique<AssetCatalog>(*orig_catalog_uptr);
+    dest.add_new(copy_catalog_uptr->catalog_id, std::move(copy_catalog_uptr));
+  }
+}
+
+void AssetCatalogCollection::add_catalogs_from_existing(const AssetCatalogCollection &other)
+{
+  copy_catalog_map_into_existing(other.catalogs_, catalogs_);
+}
+
 OwningAssetCatalogMap AssetCatalogCollection::copy_catalog_map(const OwningAssetCatalogMap &orig)
 {
   OwningAssetCatalogMap copy;
-
-  for (const auto &orig_catalog_uptr : orig.values()) {
-    auto copy_catalog_uptr = std::make_unique<AssetCatalog>(*orig_catalog_uptr);
-    copy.add_new(copy_catalog_uptr->catalog_id, std::move(copy_catalog_uptr));
-  }
-
+  copy_catalog_map_into_existing(orig, copy);
   return copy;
 }
-
-/* ---------------------------------------------------------------------- */
-
-AssetCatalogTreeItem::AssetCatalogTreeItem(StringRef name,
-                                           CatalogID catalog_id,
-                                           StringRef simple_name,
-                                           const AssetCatalogTreeItem *parent)
-    : name_(name), catalog_id_(catalog_id), simple_name_(simple_name), parent_(parent)
-{
-}
-
-CatalogID AssetCatalogTreeItem::get_catalog_id() const
-{
-  return catalog_id_;
-}
-
-StringRefNull AssetCatalogTreeItem::get_name() const
-{
-  return name_;
-}
-
-StringRefNull AssetCatalogTreeItem::get_simple_name() const
-{
-  return simple_name_;
-}
-bool AssetCatalogTreeItem::has_unsaved_changes() const
-{
-  return has_unsaved_changes_;
-}
-
-AssetCatalogPath AssetCatalogTreeItem::catalog_path() const
-{
-  AssetCatalogPath current_path = name_;
-  for (const AssetCatalogTreeItem *parent = parent_; parent; parent = parent->parent_) {
-    current_path = AssetCatalogPath(parent->name_) / current_path;
-  }
-  return current_path;
-}
-
-int AssetCatalogTreeItem::count_parents() const
-{
-  int i = 0;
-  for (const AssetCatalogTreeItem *parent = parent_; parent; parent = parent->parent_) {
-    i++;
-  }
-  return i;
-}
-
-bool AssetCatalogTreeItem::has_children() const
-{
-  return !children_.empty();
-}
-
-void AssetCatalogTreeItem::foreach_item_recursive(AssetCatalogTreeItem::ChildMap &children,
-                                                  const ItemIterFn callback)
-{
-  for (auto &[key, item] : children) {
-    callback(item);
-    foreach_item_recursive(item.children_, callback);
-  }
-}
-
-void AssetCatalogTreeItem::foreach_child(const ItemIterFn callback)
-{
-  for (auto &[key, item] : children_) {
-    callback(item);
-  }
-}
-
-/* ---------------------------------------------------------------------- */
-
-void AssetCatalogTree::insert_item(const AssetCatalog &catalog)
-{
-  const AssetCatalogTreeItem *parent = nullptr;
-  /* The children for the currently iterated component, where the following component should be
-   * added to (if not there yet). */
-  AssetCatalogTreeItem::ChildMap *current_item_children = &root_items_;
-
-  BLI_assert_msg(!ELEM(catalog.path.str()[0], '/', '\\'),
-                 "Malformed catalog path; should not start with a separator");
-
-  const CatalogID nil_id{};
-
-  catalog.path.iterate_components([&](StringRef component_name, const bool is_last_component) {
-    /* Insert new tree element - if no matching one is there yet! */
-    auto [key_and_item, was_inserted] = current_item_children->emplace(
-        component_name,
-        AssetCatalogTreeItem(component_name,
-                             is_last_component ? catalog.catalog_id : nil_id,
-                             is_last_component ? catalog.simple_name : "",
-                             parent));
-    AssetCatalogTreeItem &item = key_and_item->second;
-
-    /* If full path of this catalog already exists as parent path of a previously read catalog,
-     * we can ensure this tree item's UUID is set here. */
-    if (is_last_component) {
-      if (BLI_uuid_is_nil(item.catalog_id_) || catalog.flags.is_first_loaded) {
-        item.catalog_id_ = catalog.catalog_id;
-      }
-      item.has_unsaved_changes_ = catalog.flags.has_unsaved_changes;
-    }
-
-    /* Walk further into the path (no matter if a new item was created or not). */
-    parent = &item;
-    current_item_children = &item.children_;
-  });
-}
-
-void AssetCatalogTree::foreach_item(AssetCatalogTreeItem::ItemIterFn callback)
-{
-  AssetCatalogTreeItem::foreach_item_recursive(root_items_, callback);
-}
-
-void AssetCatalogTree::foreach_root_item(const ItemIterFn callback)
-{
-  for (auto &[key, item] : root_items_) {
-    callback(item);
-  }
-}
-
-bool AssetCatalogTree::is_empty() const
-{
-  return root_items_.empty();
-}
-
-AssetCatalogTreeItem *AssetCatalogTree::find_item(const AssetCatalogPath &path)
-{
-  AssetCatalogTreeItem *result = nullptr;
-  this->foreach_item([&](AssetCatalogTreeItem &item) {
-    if (result) {
-      /* There is no way to stop iteration. */
-      return;
-    }
-    if (item.catalog_path() == path) {
-      result = &item;
-    }
-  });
-  return result;
-}
-
-AssetCatalogTreeItem *AssetCatalogTree::find_root_item(const AssetCatalogPath &path)
-{
-  AssetCatalogTreeItem *result = nullptr;
-  this->foreach_root_item([&](AssetCatalogTreeItem &item) {
-    if (result) {
-      /* There is no way to stop iteration. */
-      return;
-    }
-    if (item.catalog_path() == path) {
-      result = &item;
-    }
-  });
-  return result;
-}
-
-/* ---------------------------------------------------------------------- */
 
 /* ---------------------------------------------------------------------- */
 
@@ -964,12 +851,12 @@ bool AssetCatalogDefinitionFile::write_to_disk(const CatalogFilePath &dest_file_
     return false;
   }
   if (BLI_exists(dest_file_path.c_str())) {
-    if (BLI_rename(dest_file_path.c_str(), backup_path.c_str())) {
+    if (BLI_rename_overwrite(dest_file_path.c_str(), backup_path.c_str())) {
       /* TODO: communicate what went wrong. */
       return false;
     }
   }
-  if (BLI_rename(writable_path.c_str(), dest_file_path.c_str())) {
+  if (BLI_rename_overwrite(writable_path.c_str(), dest_file_path.c_str())) {
     /* TODO: communicate what went wrong. */
     return false;
   }
@@ -980,7 +867,7 @@ bool AssetCatalogDefinitionFile::write_to_disk(const CatalogFilePath &dest_file_
 bool AssetCatalogDefinitionFile::write_to_disk_unsafe(const CatalogFilePath &dest_file_path) const
 {
   char directory[PATH_MAX];
-  BLI_split_dir_part(dest_file_path.c_str(), directory, sizeof(directory));
+  BLI_path_split_dir_part(dest_file_path.c_str(), directory, sizeof(directory));
   if (!ensure_directory_exists(directory)) {
     /* TODO(Sybren): pass errors to the UI somehow. */
     return false;
@@ -1114,14 +1001,14 @@ std::string AssetCatalog::sensible_simple_name_for_path(const AssetCatalogPath &
 
 AssetCatalogFilter::AssetCatalogFilter(Set<CatalogID> &&matching_catalog_ids,
                                        Set<CatalogID> &&known_catalog_ids)
-    : matching_catalog_ids(std::move(matching_catalog_ids)),
-      known_catalog_ids(std::move(known_catalog_ids))
+    : matching_catalog_ids_(std::move(matching_catalog_ids)),
+      known_catalog_ids_(std::move(known_catalog_ids))
 {
 }
 
 bool AssetCatalogFilter::contains(const CatalogID asset_catalog_id) const
 {
-  return matching_catalog_ids.contains(asset_catalog_id);
+  return matching_catalog_ids_.contains(asset_catalog_id);
 }
 
 bool AssetCatalogFilter::is_known(const CatalogID asset_catalog_id) const
@@ -1129,7 +1016,7 @@ bool AssetCatalogFilter::is_known(const CatalogID asset_catalog_id) const
   if (BLI_uuid_is_nil(asset_catalog_id)) {
     return false;
   }
-  return known_catalog_ids.contains(asset_catalog_id);
+  return known_catalog_ids_.contains(asset_catalog_id);
 }
 
 }  // namespace blender::asset_system

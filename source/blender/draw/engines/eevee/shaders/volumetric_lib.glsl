@@ -1,3 +1,6 @@
+/* SPDX-FileCopyrightText: 2017-2022 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #pragma BLENDER_REQUIRE(lights_lib.glsl)
 #pragma BLENDER_REQUIRE(lightprobe_lib.glsl)
@@ -116,7 +119,7 @@ vec3 light_volume_light_vector(LightData ld, vec3 P)
 
 vec3 participating_media_extinction(vec3 wpos, sampler3D volume_extinction)
 {
-  /* Waiting for proper volume shadowmaps and out of frustum shadow map. */
+  /* Waiting for proper volume shadow-maps and out of frustum shadow map. */
   vec3 ndc = project_point(ProjectionMatrix, transform_point(ViewMatrix, wpos));
   vec3 volume_co = ndc_to_volume(ndc * 0.5 + 0.5);
 
@@ -185,9 +188,6 @@ vec3 irradiance_volumetric(vec3 wpos)
   return vec3(0.0);
 #endif
 }
-
-uniform sampler3D inScattering;
-uniform sampler3D inTransmittance;
 
 void volumetric_resolve(vec2 frag_uvs,
                         float frag_depth,

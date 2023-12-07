@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later
- * Copyright 2016 Blender Foundation. */
+/* SPDX-FileCopyrightText: 2016 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /** \file
  * \ingroup draw
@@ -14,9 +15,10 @@
 #include "BLI_math_vector.h"
 #include "BLI_string.h"
 
-#include "BKE_context.h"
+#include "BKE_context.hh"
 #include "BKE_layer.h"
 #include "BKE_material.h"
+#include "BKE_pbvh.hh"
 #include "BKE_scene.h"
 
 #include "BLT_translation.h"
@@ -40,7 +42,7 @@
 #include "draw_view.h"
 
 #include "draw_debug.h"
-#include "draw_manager_profiling.h"
+#include "draw_manager_profiling.hh"
 #include "draw_state.h"
 #include "draw_view_data.h"
 
@@ -48,7 +50,7 @@
 
 #include "RE_engine.h"
 
-#include "DEG_depsgraph.h"
+#include "DEG_depsgraph.hh"
 
 #ifdef __cplusplus
 extern "C" {
@@ -179,6 +181,61 @@ void DRW_texture_ensure_fullscreen_2d(struct GPUTexture **tex,
 void DRW_texture_ensure_2d(
     struct GPUTexture **tex, int w, int h, eGPUTextureFormat format, DRWTextureFlag flags);
 
+/* Explicit parameter variants. */
+struct GPUTexture *DRW_texture_pool_query_2d_ex(
+    int w, int h, eGPUTextureFormat format, eGPUTextureUsage usage, DrawEngineType *engine_type);
+struct GPUTexture *DRW_texture_pool_query_fullscreen_ex(eGPUTextureFormat format,
+                                                        eGPUTextureUsage usage,
+                                                        DrawEngineType *engine_type);
+
+struct GPUTexture *DRW_texture_create_1d_ex(int w,
+                                            eGPUTextureFormat format,
+                                            eGPUTextureUsage usage_flags,
+                                            DRWTextureFlag flags,
+                                            const float *fpixels);
+struct GPUTexture *DRW_texture_create_2d_ex(int w,
+                                            int h,
+                                            eGPUTextureFormat format,
+                                            eGPUTextureUsage usage_flags,
+                                            DRWTextureFlag flags,
+                                            const float *fpixels);
+struct GPUTexture *DRW_texture_create_2d_array_ex(int w,
+                                                  int h,
+                                                  int d,
+                                                  eGPUTextureFormat format,
+                                                  eGPUTextureUsage usage_flags,
+                                                  DRWTextureFlag flags,
+                                                  const float *fpixels);
+struct GPUTexture *DRW_texture_create_3d_ex(int w,
+                                            int h,
+                                            int d,
+                                            eGPUTextureFormat format,
+                                            eGPUTextureUsage usage_flags,
+                                            DRWTextureFlag flags,
+                                            const float *fpixels);
+struct GPUTexture *DRW_texture_create_cube_ex(int w,
+                                              eGPUTextureFormat format,
+                                              eGPUTextureUsage usage_flags,
+                                              DRWTextureFlag flags,
+                                              const float *fpixels);
+struct GPUTexture *DRW_texture_create_cube_array_ex(int w,
+                                                    int d,
+                                                    eGPUTextureFormat format,
+                                                    eGPUTextureUsage usage_flags,
+                                                    DRWTextureFlag flags,
+                                                    const float *fpixels);
+
+void DRW_texture_ensure_fullscreen_2d_ex(struct GPUTexture **tex,
+                                         eGPUTextureFormat format,
+                                         eGPUTextureUsage usage,
+                                         DRWTextureFlag flags);
+void DRW_texture_ensure_2d_ex(struct GPUTexture **tex,
+                              int w,
+                              int h,
+                              eGPUTextureFormat format,
+                              eGPUTextureUsage usage,
+                              DRWTextureFlag flags);
+
 void DRW_texture_generate_mipmaps(struct GPUTexture *tex);
 void DRW_texture_free(struct GPUTexture *tex);
 #define DRW_TEXTURE_FREE_SAFE(tex) \
@@ -198,7 +255,7 @@ void DRW_texture_free(struct GPUTexture *tex);
   } while (0)
 
 /* Shaders */
-
+struct GPUShader *DRW_shader_create_from_info_name(const char *info_name);
 struct GPUShader *DRW_shader_create_ex(
     const char *vert, const char *geom, const char *frag, const char *defines, const char *name);
 struct GPUShader *DRW_shader_create_with_lib_ex(const char *vert,
@@ -251,6 +308,7 @@ struct GPUMaterial *DRW_shader_from_material(struct Material *ma,
                                              bool deferred,
                                              GPUCodegenCallbackFn callback,
                                              void *thunk);
+void DRW_shader_queue_optimize_material(struct GPUMaterial *mat);
 void DRW_shader_free(struct GPUShader *shader);
 #define DRW_SHADER_FREE_SAFE(shader) \
   do { \
@@ -270,6 +328,9 @@ void DRW_shader_library_add_file(DRWShaderLibrary *lib,
                                  const char *lib_name);
 #define DRW_SHADER_LIB_ADD(lib, lib_name) \
   DRW_shader_library_add_file(lib, datatoc_##lib_name##_glsl, STRINGIFY(lib_name) ".glsl")
+
+#define DRW_SHADER_LIB_ADD_SHARED(lib, lib_name) \
+  DRW_shader_library_add_file(lib, datatoc_##lib_name##_h, STRINGIFY(lib_name) ".h")
 
 /**
  * \return an allocN'ed string containing the shader code with its dependencies prepended.
@@ -326,8 +387,8 @@ void DRW_shgroup_add_material_resources(DRWShadingGroup *grp, struct GPUMaterial
 typedef bool(DRWCallVisibilityFn)(bool vis_in, void *user_data);
 
 void DRW_shgroup_call_ex(DRWShadingGroup *shgroup,
-                         Object *ob,
-                         float (*obmat)[4],
+                         const Object *ob,
+                         const float (*obmat)[4],
                          struct GPUBatch *geom,
                          bool bypass_culling,
                          void *user_data);
@@ -356,12 +417,12 @@ void DRW_shgroup_call_ex(DRWShadingGroup *shgroup,
   DRW_shgroup_call_ex(shgroup, ob, NULL, geom, true, NULL)
 
 void DRW_shgroup_call_range(
-    DRWShadingGroup *shgroup, Object *ob, struct GPUBatch *geom, uint v_sta, uint v_num);
+    DRWShadingGroup *shgroup, const Object *ob, struct GPUBatch *geom, uint v_sta, uint v_num);
 /**
  * A count of 0 instance will use the default number of instance in the batch.
  */
 void DRW_shgroup_call_instance_range(
-    DRWShadingGroup *shgroup, Object *ob, struct GPUBatch *geom, uint i_sta, uint i_num);
+    DRWShadingGroup *shgroup, const Object *ob, struct GPUBatch *geom, uint i_sta, uint i_num);
 
 void DRW_shgroup_call_compute(DRWShadingGroup *shgroup,
                               int groups_x_len,
@@ -375,9 +436,9 @@ void DRW_shgroup_call_compute_ref(DRWShadingGroup *shgroup, int groups_ref[3]);
  * \note No need for a barrier. \a indirect_buf is internally synchronized.
  */
 void DRW_shgroup_call_compute_indirect(DRWShadingGroup *shgroup, GPUStorageBuf *indirect_buf);
-void DRW_shgroup_call_procedural_points(DRWShadingGroup *sh, Object *ob, uint point_count);
-void DRW_shgroup_call_procedural_lines(DRWShadingGroup *sh, Object *ob, uint line_count);
-void DRW_shgroup_call_procedural_triangles(DRWShadingGroup *sh, Object *ob, uint tri_count);
+void DRW_shgroup_call_procedural_points(DRWShadingGroup *sh, const Object *ob, uint point_count);
+void DRW_shgroup_call_procedural_lines(DRWShadingGroup *sh, const Object *ob, uint line_count);
+void DRW_shgroup_call_procedural_triangles(DRWShadingGroup *sh, const Object *ob, uint tri_count);
 void DRW_shgroup_call_procedural_indirect(DRWShadingGroup *shgroup,
                                           GPUPrimType primitive_type,
                                           Object *ob,
@@ -387,14 +448,14 @@ void DRW_shgroup_call_procedural_indirect(DRWShadingGroup *shgroup,
  * TODO: Should be removed.
  */
 void DRW_shgroup_call_instances(DRWShadingGroup *shgroup,
-                                Object *ob,
+                                const Object *ob,
                                 struct GPUBatch *geom,
                                 uint count);
 /**
  * \warning Only use with Shaders that have INSTANCED_ATTR defined.
  */
 void DRW_shgroup_call_instances_with_attrs(DRWShadingGroup *shgroup,
-                                           Object *ob,
+                                           const Object *ob,
                                            struct GPUBatch *geom,
                                            struct GPUBatch *inst_attributes);
 
@@ -409,7 +470,7 @@ void DRW_shgroup_call_sculpt(DRWShadingGroup *shgroup,
 void DRW_shgroup_call_sculpt_with_materials(DRWShadingGroup **shgroups,
                                             struct GPUMaterial **gpumats,
                                             int num_shgroups,
-                                            Object *ob);
+                                            const Object *ob);
 
 DRWCallBuffer *DRW_shgroup_call_buffer(DRWShadingGroup *shgroup,
                                        struct GPUVertFormat *format,
@@ -474,11 +535,11 @@ void DRW_shgroup_clear_framebuffer(DRWShadingGroup *shgroup,
 void DRW_shgroup_uniform_texture_ex(DRWShadingGroup *shgroup,
                                     const char *name,
                                     const struct GPUTexture *tex,
-                                    eGPUSamplerState sampler_state);
+                                    GPUSamplerState sampler_state);
 void DRW_shgroup_uniform_texture_ref_ex(DRWShadingGroup *shgroup,
                                         const char *name,
                                         GPUTexture **tex,
-                                        eGPUSamplerState sampler_state);
+                                        GPUSamplerState sampler_state);
 void DRW_shgroup_uniform_texture(DRWShadingGroup *shgroup,
                                  const char *name,
                                  const struct GPUTexture *tex);
@@ -611,8 +672,8 @@ DRWPass *DRW_pass_create_instance(const char *name, DRWPass *original, DRWState 
  */
 void DRW_pass_link(DRWPass *first, DRWPass *second);
 void DRW_pass_foreach_shgroup(DRWPass *pass,
-                              void (*callback)(void *userData, DRWShadingGroup *shgroup),
-                              void *userData);
+                              void (*callback)(void *user_data, DRWShadingGroup *shgroup),
+                              void *user_data);
 /**
  * Sort Shading groups by decreasing Z of their first draw call.
  * This is useful for order dependent effect such as alpha-blending.
@@ -778,6 +839,11 @@ void DRW_custom_pipeline(DrawEngineType *draw_engine_type,
                          struct Depsgraph *depsgraph,
                          void (*callback)(void *vedata, void *user_data),
                          void *user_data);
+/**
+ * Same as `DRW_custom_pipeline` but allow better code-flow than a callback.
+ */
+void DRW_custom_pipeline_begin(DrawEngineType *draw_engine_type, struct Depsgraph *depsgraph);
+void DRW_custom_pipeline_end(void);
 
 /**
  * Used when the render engine want to redo another cache populate inside the same render frame.
@@ -883,7 +949,7 @@ bool DRW_state_is_scene_render(void);
 /**
  * Whether we are rendering simple opengl render
  */
-bool DRW_state_is_opengl_render(void);
+bool DRW_state_is_viewport_image_render(void);
 bool DRW_state_is_playback(void);
 /**
  * Is the user navigating the region.
@@ -948,6 +1014,9 @@ void DRW_mesh_batch_cache_get_attributes(struct Object *object,
                                          struct Mesh *me,
                                          struct DRW_Attributes **r_attrs,
                                          struct DRW_MeshCDMask **r_cd_needed);
+
+void DRW_sculpt_debug_cb(
+    PBVHNode *node, void *user_data, const float bmin[3], const float bmax[3], PBVHNodeFlags flag);
 
 #ifdef __cplusplus
 }

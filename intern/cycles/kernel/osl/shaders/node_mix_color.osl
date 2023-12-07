@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: Apache-2.0
- * Copyright 2011-2022 Blender Foundation */
+/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
+ *
+ * SPDX-License-Identifier: Apache-2.0 */
 
 #include "node_color.h"
 #include "node_color_blend.h"
@@ -31,6 +32,8 @@ shader node_mix_color(string blend_type = "mix",
     Result = node_mix_div(t, A, B);
   if (blend_type == "difference")
     Result = node_mix_diff(t, A, B);
+  if (blend_type == "exclusion")
+    Result = node_mix_exclusion(t, A, B);
   if (blend_type == "darken")
     Result = node_mix_dark(t, A, B);
   if (blend_type == "lighten")

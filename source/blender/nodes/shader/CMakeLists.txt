@@ -1,28 +1,25 @@
+# SPDX-FileCopyrightText: 2021 Blender Authors
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Copyright 2021 Blender Foundation. All rights reserved.
 
 set(INC
   .
   ..
   ../intern
   ../../blenkernel
-  ../../blenlib
   ../../blentranslation
-  ../../depsgraph
   ../../editors/include
-  ../../functions
   ../../gpu
-  ../../imbuf
-  ../../makesdna
   ../../makesrna
   ../../render
   ../../windowmanager
-  ../../../../intern/guardedalloc
   ../../../../intern/sky/include
   # RNA_prototypes.h
   ${CMAKE_BINARY_DIR}/source/blender/makesrna
 )
 
+set(INC_SYS
+)
 
 set(SRC
   nodes/node_shader_add_shader.cc
@@ -32,7 +29,6 @@ set(SRC
   nodes/node_shader_bevel.cc
   nodes/node_shader_blackbody.cc
   nodes/node_shader_brightness.cc
-  nodes/node_shader_bsdf_anisotropic.cc
   nodes/node_shader_bsdf_diffuse.cc
   nodes/node_shader_bsdf_glass.cc
   nodes/node_shader_bsdf_glossy.cc
@@ -40,10 +36,10 @@ set(SRC
   nodes/node_shader_bsdf_hair_principled.cc
   nodes/node_shader_bsdf_principled.cc
   nodes/node_shader_bsdf_refraction.cc
+  nodes/node_shader_bsdf_sheen.cc
   nodes/node_shader_bsdf_toon.cc
   nodes/node_shader_bsdf_translucent.cc
   nodes/node_shader_bsdf_transparent.cc
-  nodes/node_shader_bsdf_velvet.cc
   nodes/node_shader_bump.cc
   nodes/node_shader_camera.cc
   nodes/node_shader_clamp.cc
@@ -98,7 +94,6 @@ set(SRC
   nodes/node_shader_tex_gradient.cc
   nodes/node_shader_tex_image.cc
   nodes/node_shader_tex_magic.cc
-  nodes/node_shader_tex_musgrave.cc
   nodes/node_shader_tex_noise.cc
   nodes/node_shader_tex_pointdensity.cc
   nodes/node_shader_tex_sky.cc
@@ -120,17 +115,52 @@ set(SRC
   nodes/node_shader_wavelength.cc
   nodes/node_shader_wireframe.cc
 
+  node_shader_register.cc
   node_shader_tree.cc
   node_shader_util.cc
 
+  node_shader_register.hh
   node_shader_util.hh
 )
 
 set(LIB
-  bf_functions
+  PRIVATE bf::blenlib
+  PRIVATE bf::depsgraph
+  PRIVATE bf::dna
+  PRIVATE bf::functions
+  PRIVATE bf::imbuf
+  PRIVATE bf::intern::clog
+  PRIVATE bf::intern::guardedalloc
   bf_intern_sky
   bf_nodes
 )
+
+if(WITH_MATERIALX)
+  add_definitions(-DWITH_MATERIALX)
+  list(APPEND SRC
+    materialx/group_nodes.cc
+    materialx/material.cc
+    materialx/node_item.cc
+    materialx/node_parser.cc
+
+    materialx/group_nodes.h
+    materialx/material.h
+    materialx/node_item.h
+    materialx/node_parser.h
+  )
+  list(APPEND LIB
+    MaterialXCore
+    MaterialXFormat
+  )
+
+  if(WITH_USD)
+    add_definitions(-DWITH_USD)
+    list(APPEND INC_SYS
+      ${USD_INCLUDE_DIRS}
+      ${BOOST_INCLUDE_DIR}
+    )
+  endif()
+endif()
 
 if(WITH_FREESTYLE)
   add_definitions(-DWITH_FREESTYLE)

@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later
- * Copyright 2020 Blender Foundation. All rights reserved. */
+/* SPDX-FileCopyrightText: 2020 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /** \file
  * \ingroup gpu
@@ -10,6 +11,7 @@
 #include "gpu_context_private.hh"
 
 #include "gl_debug.hh"
+#include "gl_texture.hh"
 #include "gl_uniform_buffer.hh"
 
 namespace blender::gpu {
@@ -56,6 +58,35 @@ void GLUniformBuf::update(const void *data)
   glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
+void GLUniformBuf::clear_to_zero()
+{
+  if (ubo_id_ == 0) {
+    this->init();
+  }
+
+  uint32_t data = 0;
+  eGPUTextureFormat internal_format = GPU_R32UI;
+  eGPUDataFormat data_format = GPU_DATA_UINT;
+
+  if (GLContext::direct_state_access_support) {
+    glClearNamedBufferData(ubo_id_,
+                           to_gl_internal_format(internal_format),
+                           to_gl_data_format(internal_format),
+                           to_gl(data_format),
+                           &data);
+  }
+  else {
+    /* WATCH(@fclem): This should be ok since we only use clear outside of drawing functions. */
+    glBindBuffer(GL_UNIFORM_BUFFER, ubo_id_);
+    glClearBufferData(GL_UNIFORM_BUFFER,
+                      to_gl_internal_format(internal_format),
+                      to_gl_data_format(internal_format),
+                      to_gl(data_format),
+                      &data);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+  }
+}
+
 /** \} */
 
 /* -------------------------------------------------------------------- */
@@ -86,7 +117,7 @@ void GLUniformBuf::bind(int slot)
   slot_ = slot;
   glBindBufferBase(GL_UNIFORM_BUFFER, slot_, ubo_id_);
 
-#ifdef DEBUG
+#ifndef NDEBUG
   BLI_assert(slot < 16);
   GLContext::get()->bound_ubo_slots |= 1 << slot;
 #endif
@@ -107,7 +138,7 @@ void GLUniformBuf::bind_as_ssbo(int slot)
 
 void GLUniformBuf::unbind()
 {
-#ifdef DEBUG
+#ifndef NDEBUG
   /* NOTE: This only unbinds the last bound slot. */
   glBindBufferBase(GL_UNIFORM_BUFFER, slot_, 0);
   /* Hope that the context did not change. */

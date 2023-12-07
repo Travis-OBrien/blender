@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #include "gpu_shader_create_info.hh"
 
@@ -45,11 +47,12 @@ GPU_SHADER_CREATE_INFO(overlay_armature_sphere_solid)
     /* Per instance. */
     .vertex_in(1, Type::VEC4, "color")
     .vertex_in(2, Type::MAT4, "inst_obmat")
-    // .depth_layout(DepthLayout::GREATER) /* TODO */
+    .depth_write(DepthWrite::GREATER)
     .vertex_out(overlay_armature_sphere_solid_iface)
     .vertex_source("overlay_armature_sphere_solid_vert.glsl")
     .fragment_source("overlay_armature_sphere_solid_frag.glsl")
-    .additional_info("overlay_frag_output", "overlay_armature_common", "draw_globals");
+    .additional_info("overlay_frag_output", "overlay_armature_common", "draw_globals")
+    .depth_write(DepthWrite::ANY);
 
 GPU_SHADER_CREATE_INFO(overlay_armature_sphere_solid_clipped)
     .do_static_compilation(true)
@@ -66,7 +69,8 @@ GPU_SHADER_INTERFACE_INFO(overlay_armature_shape_outline_iface, "geom_in")
     .smooth(Type::VEC3, "vPos")
     .smooth(Type::VEC2, "ssPos")
     .smooth(Type::VEC2, "ssNor")
-    .smooth(Type::VEC4, "vColSize")
+    .smooth(Type::VEC4, "vColSize");
+GPU_SHADER_INTERFACE_INFO(overlay_armature_shape_outline_flat_iface, "geom_flat_in")
     .flat(Type::INT, "inverted");
 
 GPU_SHADER_INTERFACE_INFO(overlay_armature_shape_outline_no_geom_iface, "")
@@ -82,6 +86,7 @@ GPU_SHADER_CREATE_INFO(overlay_armature_shape_outline)
     .vertex_in(2, Type::VEC4, "color")
     .vertex_in(3, Type::MAT4, "inst_obmat")
     .vertex_out(overlay_armature_shape_outline_iface)
+    .vertex_out(overlay_armature_shape_outline_flat_iface)
     .geometry_layout(PrimitiveIn::LINES_ADJACENCY, PrimitiveOut::LINE_STRIP, 2)
     .geometry_out(overlay_armature_wire_iface)
     .vertex_source("overlay_armature_shape_outline_vert.glsl")
@@ -90,7 +95,8 @@ GPU_SHADER_CREATE_INFO(overlay_armature_shape_outline)
     .additional_info("overlay_frag_output", "overlay_armature_common", "draw_globals");
 
 GPU_SHADER_CREATE_INFO(overlay_armature_shape_outline_no_geom)
-    // .do_static_compilation(true) /* TODO fix on GL */
+    .metal_backend_only(true)
+    .do_static_compilation(true)
     .vertex_in(0, Type::VEC3, "pos")
     .vertex_in(1, Type::VEC3, "snor")
     /* Per instance. */
@@ -106,7 +112,8 @@ GPU_SHADER_CREATE_INFO(overlay_armature_shape_outline_clipped)
     .additional_info("overlay_armature_shape_outline", "drw_clipped");
 
 GPU_SHADER_CREATE_INFO(overlay_armature_shape_outline_clipped_no_geom)
-    // .do_static_compilation(true) /* TODO fix on GL */
+    .metal_backend_only(true)
+    .do_static_compilation(true)
     .additional_info("overlay_armature_shape_outline_no_geom", "drw_clipped");
 
 GPU_SHADER_INTERFACE_INFO(overlay_armature_shape_solid_iface, "")

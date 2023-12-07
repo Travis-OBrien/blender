@@ -1,21 +1,31 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later
- * Copyright 2005 Blender Foundation. All rights reserved. */
+/* SPDX-FileCopyrightText: 2005 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /** \file
  * \ingroup shdnodes
  */
 
 #include "node_shader_util.hh"
+#include "node_util.hh"
+
+#include "BKE_material.h"
+
+#include "BLI_math_vector.h"
+
+#include "DNA_material_types.h"
+
+#include "NOD_multi_function.hh"
 
 namespace blender::nodes::node_shader_mix_rgb_cc {
 
 static void sh_node_mix_rgb_declare(NodeDeclarationBuilder &b)
 {
   b.is_function_node();
-  b.add_input<decl::Float>(N_("Fac")).default_value(0.5f).min(0.0f).max(1.0f).subtype(PROP_FACTOR);
-  b.add_input<decl::Color>(N_("Color1")).default_value({0.5f, 0.5f, 0.5f, 1.0f});
-  b.add_input<decl::Color>(N_("Color2")).default_value({0.5f, 0.5f, 0.5f, 1.0f});
-  b.add_output<decl::Color>(N_("Color"));
+  b.add_input<decl::Float>("Fac").default_value(0.5f).min(0.0f).max(1.0f).subtype(PROP_FACTOR);
+  b.add_input<decl::Color>("Color1").default_value({0.5f, 0.5f, 0.5f, 1.0f});
+  b.add_input<decl::Color>("Color2").default_value({0.5f, 0.5f, 0.5f, 1.0f});
+  b.add_output<decl::Color>("Color");
 }
 
 static const char *gpu_shader_get_name(int mode)
@@ -35,6 +45,8 @@ static const char *gpu_shader_get_name(int mode)
       return "mix_div_fallback";
     case MA_RAMP_DIFF:
       return "mix_diff";
+    case MA_RAMP_EXCLUSION:
+      return "mix_exclusion";
     case MA_RAMP_DARK:
       return "mix_dark";
     case MA_RAMP_LIGHT:
@@ -89,7 +101,7 @@ static int gpu_shader_mix_rgb(GPUMaterial *mat,
   return ret;
 }
 
-class MixRGBFunction : public fn::MultiFunction {
+class MixRGBFunction : public mf::MultiFunction {
  private:
   bool clamp_;
   int type_;
@@ -97,21 +109,19 @@ class MixRGBFunction : public fn::MultiFunction {
  public:
   MixRGBFunction(bool clamp, int type) : clamp_(clamp), type_(type)
   {
-    static fn::MFSignature signature = create_signature();
+    static const mf::Signature signature = []() {
+      mf::Signature signature;
+      mf::SignatureBuilder builder{"MixRGB", signature};
+      builder.single_input<float>("Fac");
+      builder.single_input<ColorGeometry4f>("Color1");
+      builder.single_input<ColorGeometry4f>("Color2");
+      builder.single_output<ColorGeometry4f>("Color");
+      return signature;
+    }();
     this->set_signature(&signature);
   }
 
-  static fn::MFSignature create_signature()
-  {
-    fn::MFSignatureBuilder signature{"MixRGB"};
-    signature.single_input<float>("Fac");
-    signature.single_input<ColorGeometry4f>("Color1");
-    signature.single_input<ColorGeometry4f>("Color2");
-    signature.single_output<ColorGeometry4f>("Color");
-    return signature.build();
-  }
-
-  void call(IndexMask mask, fn::MFParams params, fn::MFContext /*context*/) const override
+  void call(const IndexMask &mask, mf::Params params, mf::Context /*context*/) const override
   {
     const VArray<float> &fac = params.readonly_single_input<float>(0, "Fac");
     const VArray<ColorGeometry4f> &col1 = params.readonly_single_input<ColorGeometry4f>(1,
@@ -121,15 +131,13 @@ class MixRGBFunction : public fn::MultiFunction {
     MutableSpan<ColorGeometry4f> results = params.uninitialized_single_output<ColorGeometry4f>(
         3, "Color");
 
-    for (int64_t i : mask) {
+    mask.foreach_index([&](const int64_t i) {
       results[i] = col1[i];
       ramp_blend(type_, results[i], clamp_f(fac[i], 0.0f, 1.0f), col2[i]);
-    }
+    });
 
     if (clamp_) {
-      for (int64_t i : mask) {
-        clamp_v3(results[i], 0.0f, 1.0f);
-      }
+      mask.foreach_index([&](const int64_t i) { clamp_v3(results[i], 0.0f, 1.0f); });
     }
   }
 };

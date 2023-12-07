@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 /** \file
  * \ingroup asset_system
@@ -34,7 +36,6 @@ namespace blender::asset_system {
 class AssetCatalogPath {
   friend std::ostream &operator<<(std::ostream &stream, const AssetCatalogPath &path_to_append);
 
- private:
   /**
    * The path itself, such as "Agents/Secret/327".
    */

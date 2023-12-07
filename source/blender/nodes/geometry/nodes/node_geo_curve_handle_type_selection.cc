@@ -1,9 +1,11 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #include "BKE_curves.hh"
 
-#include "UI_interface.h"
-#include "UI_resources.h"
+#include "UI_interface.hh"
+#include "UI_resources.hh"
 
 #include "node_geometry_util.hh"
 
@@ -13,13 +15,13 @@ NODE_STORAGE_FUNCS(NodeGeometryCurveSelectHandles)
 
 static void node_declare(NodeDeclarationBuilder &b)
 {
-  b.add_output<decl::Bool>(N_("Selection")).field_source();
+  b.add_output<decl::Bool>("Selection").field_source();
 }
 
 static void node_layout(uiLayout *layout, bContext * /*C*/, PointerRNA *ptr)
 {
   uiItemR(layout, ptr, "mode", UI_ITEM_R_EXPAND, nullptr, ICON_NONE);
-  uiItemR(layout, ptr, "handle_type", 0, "", ICON_NONE);
+  uiItemR(layout, ptr, "handle_type", UI_ITEM_NONE, "", ICON_NONE);
 }
 
 static void node_init(bNodeTree * /*tree*/, bNode *node)
@@ -52,12 +54,13 @@ static void select_by_handle_type(const bke::CurvesGeometry &curves,
                                   const GeometryNodeCurveHandleMode mode,
                                   const MutableSpan<bool> r_selection)
 {
+  const OffsetIndices points_by_curve = curves.points_by_curve();
   VArray<int8_t> curve_types = curves.curve_types();
   VArray<int8_t> left = curves.handle_types_left();
   VArray<int8_t> right = curves.handle_types_right();
 
   for (const int i_curve : curves.curves_range()) {
-    const IndexRange points = curves.points_for_curve(i_curve);
+    const IndexRange points = points_by_curve[i_curve];
     if (curve_types[i_curve] != CURVE_TYPE_BEZIER) {
       r_selection.slice(points).fill(false);
     }
@@ -85,7 +88,7 @@ class HandleTypeFieldInput final : public bke::CurvesFieldInput {
 
   GVArray get_varray_for_context(const bke::CurvesGeometry &curves,
                                  const eAttrDomain domain,
-                                 IndexMask mask) const final
+                                 const IndexMask &mask) const final
   {
     if (domain != ATTR_DOMAIN_POINT) {
       return {};
@@ -103,7 +106,8 @@ class HandleTypeFieldInput final : public bke::CurvesFieldInput {
   bool is_equal_to(const fn::FieldNode &other) const override
   {
     if (const HandleTypeFieldInput *other_handle_selection =
-            dynamic_cast<const HandleTypeFieldInput *>(&other)) {
+            dynamic_cast<const HandleTypeFieldInput *>(&other))
+    {
       return mode_ == other_handle_selection->mode_ && type_ == other_handle_selection->type_;
     }
     return false;
@@ -126,24 +130,23 @@ static void node_geo_exec(GeoNodeExecParams params)
   params.set_output("Selection", std::move(selection_field));
 }
 
-}  // namespace blender::nodes::node_geo_curve_handle_type_selection_cc
-
-void register_node_type_geo_curve_handle_type_selection()
+static void node_register()
 {
-  namespace file_ns = blender::nodes::node_geo_curve_handle_type_selection_cc;
-
   static bNodeType ntype;
 
   geo_node_type_base(
       &ntype, GEO_NODE_CURVE_HANDLE_TYPE_SELECTION, "Handle Type Selection", NODE_CLASS_INPUT);
-  ntype.declare = file_ns::node_declare;
-  ntype.geometry_node_execute = file_ns::node_geo_exec;
-  ntype.initfunc = file_ns::node_init;
+  ntype.declare = node_declare;
+  ntype.geometry_node_execute = node_geo_exec;
+  ntype.initfunc = node_init;
   node_type_storage(&ntype,
                     "NodeGeometryCurveSelectHandles",
                     node_free_standard_storage,
                     node_copy_standard_storage);
-  ntype.draw_buttons = file_ns::node_layout;
+  ntype.draw_buttons = node_layout;
 
   nodeRegisterType(&ntype);
 }
+NOD_REGISTER_NODE(node_register)
+
+}  // namespace blender::nodes::node_geo_curve_handle_type_selection_cc

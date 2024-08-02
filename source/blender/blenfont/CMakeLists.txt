@@ -7,6 +7,7 @@ set(INC
   ../blenkernel
   ../blentranslation
   ../gpu
+  ../imbuf
   ../makesrna
 )
 
@@ -22,20 +23,16 @@ set(SRC
   intern/blf_font_default.cc
   intern/blf_glyph.cc
   intern/blf_thumbs.cc
-  intern/blf_util.cc
-
-  BLF_api.h
-  intern/blf_internal.h
-  intern/blf_internal_types.h
+  BLF_api.hh
+  intern/blf_internal.hh
+  intern/blf_internal_types.hh
 )
 
 set(LIB
   PRIVATE bf::blenlib
   PRIVATE bf::dna
   bf_gpu
-  PRIVATE bf::imbuf
   PRIVATE bf::intern::guardedalloc
-
   ${FREETYPE_LIBRARIES} ${BROTLI_LIBRARIES}
 )
 
@@ -52,6 +49,16 @@ if(WITH_PYTHON)
   )
 endif()
 
+if(WITH_HEADLESS)
+  add_definitions(-DWITH_HEADLESS)
+else()
+  # SVG icons.
+  list(APPEND LIB
+    PRIVATE bf::extern::nanosvg
+    PRIVATE bf::editor::datafiles
+  )
+
+endif()
 
 blender_add_lib(bf_blenfont "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
 add_library(bf::blenfont ALIAS bf_blenfont)

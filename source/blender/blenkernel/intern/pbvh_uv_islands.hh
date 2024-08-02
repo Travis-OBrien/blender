@@ -5,11 +5,11 @@
 /** \file
  * \ingroup bke
  *
- * UV Islands for PBVH Pixel extraction. When primitives share an edge they belong to the same UV
- * Island.
+ * UV Islands for pbvh::Tree Pixel extraction. When primitives share an edge they belong to the
+ * same UV Island.
  *
- * \note Similar to `uvedit_islands.cc`, but optimized for PBVH painting without using BMesh for
- * performance reasons. Non-manifold meshes only (i.e. edges must have less than 3 faces).
+ * \note Similar to `uvedit_islands.cc`, but optimized for pbvh::Tree painting without using BMesh
+ * for performance reasons. Non-manifold meshes only (i.e. edges must have less than 3 faces).
  *
  * Polygons (face with more than 3 edges) are supported as they are split up to primitives.
  *
@@ -32,8 +32,6 @@
 #include "BLI_vector.hh"
 #include "BLI_vector_list.hh"
 #include "BLI_virtual_array.hh"
-
-#include "DNA_meshdata_types.h"
 
 namespace blender::bke::pbvh::uv_islands {
 
@@ -118,10 +116,10 @@ class TriangleToEdgeMap {
  */
 struct MeshData {
  public:
-  const Span<MLoopTri> looptris;
-  const Span<int> corner_verts;
-  const Span<float2> uv_map;
-  const Span<float3> vert_positions;
+  Span<int3> corner_tris;
+  Span<int> corner_verts;
+  Span<float2> uv_map;
+  Span<float3> vert_positions;
 
   VertToEdgeMap vert_to_edge_map;
 
@@ -139,10 +137,10 @@ struct MeshData {
   int64_t uv_island_len;
 
  public:
-  explicit MeshData(Span<MLoopTri> looptris,
+  explicit MeshData(Span<int3> corner_tris,
                     Span<int> corner_verts,
-                    const Span<float2> uv_map,
-                    const Span<float3> vert_positions);
+                    Span<float2> uv_map,
+                    Span<float3> vert_positions);
 };
 
 struct UVVertex {

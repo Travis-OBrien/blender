@@ -4,19 +4,16 @@
 
 #pragma once
 
-#include <functional>
-
 #include "BLI_math_vector.hh"
 #include "BLI_rect.h"
 #include "BLI_vector.hh"
 
 #include "DNA_image_types.h"
-#include "DNA_meshdata_types.h"
 
 #include "BKE_image.h"
 #include "BKE_image_wrappers.hh"
 
-#include "IMB_imbuf_types.h"
+#include "IMB_imbuf_types.hh"
 
 namespace blender::bke::pbvh::pixels {
 
@@ -172,6 +169,9 @@ struct UDIMTileUndo {
   UDIMTileUndo(short tile_number, rcti &region) : tile_number(tile_number), region(region) {}
 };
 
+/**
+ * Contains triangle/pixel data used during texture painting.
+ */
 struct NodeData {
   struct {
     bool dirty : 1;
@@ -200,7 +200,7 @@ struct NodeData {
   {
     undo_regions.clear();
     for (UDIMTilePixels &tile : tiles) {
-      if (tile.pixel_rows.size() == 0) {
+      if (tile.pixel_rows.is_empty()) {
         continue;
       }
 
@@ -406,6 +406,9 @@ struct CopyPixelTiles {
 
 /** \} */
 
+/**
+ * Storage for texture painting on blender::bke::pbvh::Tree level.
+ */
 struct PBVHData {
   /* Per UVPRimitive contains the paint data. */
   PaintGeometryPrimitives geom_primitives;
@@ -419,14 +422,14 @@ struct PBVHData {
   }
 };
 
-NodeData &BKE_pbvh_pixels_node_data_get(PBVHNode &node);
-void BKE_pbvh_pixels_mark_image_dirty(PBVHNode &node, Image &image, ImageUser &image_user);
-PBVHData &BKE_pbvh_pixels_data_get(PBVH &pbvh);
-void BKE_pbvh_pixels_collect_dirty_tiles(PBVHNode &node, Vector<image::TileNumber> &r_dirty_tiles);
+NodeData &node_data_get(blender::bke::pbvh::Node &node);
+void mark_image_dirty(blender::bke::pbvh::Node &node, Image &image, ImageUser &image_user);
+PBVHData &data_get(blender::bke::pbvh::Tree &pbvh);
+void collect_dirty_tiles(blender::bke::pbvh::Node &node, Vector<image::TileNumber> &r_dirty_tiles);
 
-void BKE_pbvh_pixels_copy_pixels(PBVH &pbvh,
-                                 Image &image,
-                                 ImageUser &image_user,
-                                 image::TileNumber tile_number);
+void copy_pixels(blender::bke::pbvh::Tree &pbvh,
+                 Image &image,
+                 ImageUser &image_user,
+                 image::TileNumber tile_number);
 
 }  // namespace blender::bke::pbvh::pixels

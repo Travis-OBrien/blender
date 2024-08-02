@@ -51,6 +51,9 @@
  *
  * - Lock #GWL_Window.frame_pending_mutex before changing window size & frame settings,
  *   this is flushed in #GHOST_WindowWayland::pending_actions_handle.
+ *
+ * \note Keep this define as it can be useful to disable threading when troubleshooting
+ * issues with events.
  */
 #define USE_EVENT_BACKGROUND_THREAD
 
@@ -101,6 +104,8 @@ class GHOST_WindowWayland : public GHOST_Window {
   bool getCursorGrabUseSoftwareDisplay() override;
 
   GHOST_TSuccess getCursorBitmap(GHOST_CursorBitmapRef *bitmap) override;
+
+  bool getValid() const override;
 
   void setTitle(const char *title) override;
 

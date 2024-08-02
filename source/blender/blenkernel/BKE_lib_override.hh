@@ -203,10 +203,7 @@ bool BKE_lib_override_library_create(Main *bmain,
                                      ID *id_instance_hint,
                                      ID **r_id_root_override,
                                      const bool do_fully_editable);
-/**
- * Create a library override template.
- */
-bool BKE_lib_override_library_template_create(ID *id);
+
 /**
  * Convert a given proxy object into a library override.
  *
@@ -292,7 +289,7 @@ void BKE_lib_override_library_delete(Main *bmain, ID *id_root);
 /**
  * Make given ID fully local.
  *
- * \param bmain If given, all liboverrides hierarchy roots will be re-validated/generated after
+ * \param bmain: If given, all liboverrides hierarchy roots will be re-validated/generated after
  * clearing the liboverride data from given \a id. If nullptr, caller is responsible to perform
  * this action (call #BKE_lib_override_library_main_hierarchy_root_ensure) itself.
  *
@@ -304,12 +301,12 @@ void BKE_lib_override_library_make_local(Main *bmain, ID *id);
 /**
  * Find override property from given RNA path, if it exists.
  */
-IDOverrideLibraryProperty *BKE_lib_override_library_property_find(IDOverrideLibrary *override,
+IDOverrideLibraryProperty *BKE_lib_override_library_property_find(IDOverrideLibrary *liboverride,
                                                                   const char *rna_path);
 /**
  * Find override property from given RNA path, or create it if it does not exist.
  */
-IDOverrideLibraryProperty *BKE_lib_override_library_property_get(IDOverrideLibrary *override,
+IDOverrideLibraryProperty *BKE_lib_override_library_property_get(IDOverrideLibrary *liboverride,
                                                                  const char *rna_path,
                                                                  bool *r_created);
 /**

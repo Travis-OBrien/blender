@@ -1,9 +1,9 @@
 
 msgid ""
 msgstr ""
-"Project-Id-Version: Blender 4.1.0 Alpha (b'72b6c44e759b')\n"
+"Project-Id-Version: Blender 4.3.0 Alpha (b'de443e038c4e')\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2023-12-04 11:06:00\n"
+"POT-Creation-Date: 2024-07-22 07:23+0000\n"
 "PO-Revision-Date: \n"
 "Last-Translator: Yudhir Khanal <yudhir.khanal@gmail.com>\n"
 "Language-Team: Yudhir\n"
@@ -105,10 +105,6 @@ msgid "Local Location"
 msgstr "Local स्थान"
 
 
-msgid "Remove"
-msgstr "हटाउने"
-
-
 msgid "Direction"
 msgstr "दिशा "
 
@@ -143,6 +139,10 @@ msgstr "मुख्याचित्रसाचोहरु"
 
 msgid "High Quality"
 msgstr "उच्च कोटी "
+
+
+msgid "Operator"
+msgstr "संचालक "
 
 
 msgid "End"
@@ -254,6 +254,10 @@ msgstr "पुर्व-स्थापित कपड  संग्रह ब�
 
 msgid "Limit"
 msgstr "हद"
+
+
+msgid "Remove"
+msgstr "हटाउने"
 
 
 msgctxt "Operator"
@@ -402,6 +406,10 @@ msgid "Subdivision Set"
 msgstr "अर्धभाग "
 
 
+msgid "Property Name"
+msgstr "गुण : नाम "
+
+
 msgctxt "Operator"
 msgid "Copy Previous Settings"
 msgstr "पहिलेको बेबस्ता सार्ने"
@@ -435,10 +443,6 @@ msgid "ID name of the menu this was called from"
 msgstr "सुचीको परिचय नाम जसबाट यो कार्य चलेको थियो "
 
 
-msgid "Operator"
-msgstr "संचालक "
-
-
 msgctxt "Operator"
 msgid "Deinterlace Movies"
 msgstr "चलचित्रहरु De-interlace "
@@ -457,11 +461,6 @@ msgstr "पंक्तिबद्ध पार"
 msgctxt "Operator"
 msgid "View Documentation"
 msgstr "यसको अभिलेख हेर्ने"
-
-
-msgctxt "Operator"
-msgid "Add Keyconfig Preset"
-msgstr "पुर्व-स्थापित keyboard संग्रह बनाऊ "
 
 
 msgctxt "Operator"
@@ -486,10 +485,6 @@ msgid "Edit Property"
 msgstr "गुण सम्पादन गर्ने"
 
 
-msgid "Property Name"
-msgstr "गुण : नाम "
-
-
 msgid "Property name edit"
 msgstr "गुण :नाम संपादन "
 
@@ -510,10 +505,6 @@ msgstr "ब्लेंडर बन्द "
 
 msgid "Quit Blender"
 msgstr "ब्लेंडर बन्द "
-
-
-msgid "Shapes"
-msgstr "आकार"
 
 
 msgid "Pose Library"
@@ -544,16 +535,20 @@ msgid "+ Non-Grouped Keyframes"
 msgstr "+ असंग्रहित मुख्याचित्रसाचोहरु"
 
 
+msgid "Before"
+msgstr "पहिले "
+
+
+msgid "Shapes"
+msgstr "आकार"
+
+
 msgid "Axes"
 msgstr "अक्ष"
 
 
 msgid "Control Rotation"
 msgstr "घुमावमा नियन्त्रण"
-
-
-msgid "Before"
-msgstr "पहिले "
 
 
 msgid "Parent:"

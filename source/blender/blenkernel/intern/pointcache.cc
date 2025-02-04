@@ -25,7 +25,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "DNA_ID.h"
-#include "DNA_collection_types.h"
 #include "DNA_dynamicpaint_types.h"
 #include "DNA_fluid_types.h"
 #include "DNA_modifier_types.h"
@@ -34,11 +33,12 @@
 #include "DNA_particle_types.h"
 #include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
+#include "DNA_space_types.h"
 
-#include "BLI_blenlib.h"
-#include "BLI_endian_switch.h"
+#include "BLI_fileops.h"
 #include "BLI_math_rotation.h"
 #include "BLI_math_vector.h"
+#include "BLI_path_utils.hh"
 #include "BLI_string.h"
 #include "BLI_time.h"
 #include "BLI_utildefines.h"
@@ -48,6 +48,7 @@
 #include "BKE_appdir.hh"
 #include "BKE_cloth.hh"
 #include "BKE_collection.hh"
+#include "BKE_duplilist.hh"
 #include "BKE_dynamicpaint.h"
 #include "BKE_fluid.h"
 #include "BKE_global.hh"
@@ -3818,12 +3819,12 @@ void BKE_ptcache_blend_write(BlendWriter *writer, ListBase *ptcaches)
             }
             else if (i == BPHYS_DATA_INDEX) { /* Only 'cache type' to use uint values. */
               BLO_write_uint32_array(
-                  writer, pm->totpoint, reinterpret_cast<uint32_t *>(&pm->data[i]));
+                  writer, pm->totpoint, reinterpret_cast<uint32_t *>(pm->data[i]));
             }
             else { /* All other types of caches use (vectors of) floats. */
               /* data_size returns bytes. */
               const uint32_t items_num = pm->totpoint * (BKE_ptcache_data_size(i) / sizeof(float));
-              BLO_write_float_array(writer, items_num, reinterpret_cast<float *>(&pm->data[i]));
+              BLO_write_float_array(writer, items_num, reinterpret_cast<float *>(pm->data[i]));
             }
           }
         }

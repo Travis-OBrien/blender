@@ -6,32 +6,32 @@
  * \ingroup RNA
  */
 
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <fcntl.h>
 
-#include "DNA_packedFile_types.h"
-
-#include "BLI_path_util.h"
-#include "BLI_utildefines.h"
+#include "BLI_path_utils.hh"
 
 #include "RNA_define.hh"
 #include "RNA_enum_types.hh"
 
-#include "BKE_packedFile.h"
+#include "BKE_packedFile.hh"
 
 #include "rna_internal.hh" /* own include */
 
 #ifdef RNA_RUNTIME
 
-#  include "BKE_image.h"
-#  include "BKE_image_format.h"
-#  include "BKE_image_save.h"
+#  include "BLI_math_base.h"
+#  include "BLI_string.h"
+
+#  include "BKE_context.hh"
+#  include "BKE_image.hh"
+#  include "BKE_image_format.hh"
+#  include "BKE_image_save.hh"
 #  include "BKE_main.hh"
+#  include "BKE_report.hh"
 #  include "BKE_scene.hh"
-#  include <errno.h>
 
 #  include "IMB_imbuf.hh"
 
@@ -39,6 +39,8 @@
 #  include "DNA_scene_types.h"
 
 #  include "MEM_guardedalloc.h"
+
+#  include "WM_api.hh"
 
 static void rna_ImagePackedFile_save(ImagePackedFile *imapf, Main *bmain, ReportList *reports)
 {

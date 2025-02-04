@@ -10,11 +10,8 @@
 
 #include <CLG_log.h>
 
-#include "DNA_ID.h"
+#include "BLT_translation.hh"
 
-#include "BLI_utildefines.h"
-
-#include "RNA_access.hh"
 #include "RNA_define.hh"
 #include "RNA_enum_types.hh"
 
@@ -66,35 +63,36 @@ const EnumPropertyItem rna_enum_property_type_items[] = {
   {PROP_PASSWORD, "PASSWORD", 0, "Password", "A string that is displayed hidden ('********')"}
 
 #define RNA_ENUM_PROPERTY_SUBTYPE_NUMBER_ITEMS \
-  {PROP_PIXEL, "PIXEL", 0, "Pixel", ""}, \
+  {PROP_PIXEL, "PIXEL", 0, "Pixel", "A distance on screen"}, \
   {PROP_UNSIGNED, "UNSIGNED", 0, "Unsigned", ""}, \
-  {PROP_PERCENTAGE, "PERCENTAGE", 0, "Percentage", ""}, \
-  {PROP_FACTOR, "FACTOR", 0, "Factor", ""}, \
-  {PROP_ANGLE, "ANGLE", 0, "Angle", ""}, \
+  {PROP_PERCENTAGE, "PERCENTAGE", 0, "Percentage", "A percentage between 0 and 100"}, \
+  {PROP_FACTOR, "FACTOR", 0, "Factor", "A factor between 0.0 and 1.0"}, \
+  {PROP_ANGLE, "ANGLE", 0, "Angle", "A rotational value specified in radians"}, \
   {PROP_TIME, "TIME", 0, "Time (Scene Relative)", \
    "Time specified in frames, converted to seconds based on scene frame rate"}, \
   {PROP_TIME_ABSOLUTE, "TIME_ABSOLUTE", 0, "Time (Absolute)", \
    "Time specified in seconds, independent of the scene"}, \
-  {PROP_DISTANCE, "DISTANCE", 0, "Distance", ""}, \
+  {PROP_DISTANCE, "DISTANCE", 0, "Distance", "A distance between two points"}, \
   {PROP_DISTANCE_CAMERA, "DISTANCE_CAMERA", 0, "Camera Distance", ""}, \
   {PROP_POWER, "POWER", 0, "Power", ""}, \
   {PROP_TEMPERATURE, "TEMPERATURE", 0, "Temperature", ""}, \
   {PROP_WAVELENGTH, "WAVELENGTH", 0, "Wavelength", ""}, \
-  {PROP_COLOR_TEMPERATURE, "COLOR_TEMPERATURE", 0, "Color Temperature", ""}
+  {PROP_COLOR_TEMPERATURE, "COLOR_TEMPERATURE", 0, "Color Temperature", ""}, \
+  {PROP_FREQUENCY, "FREQUENCY", 0, "Frequency", ""}
 
 #define RNA_ENUM_PROPERTY_SUBTYPE_NUMBER_ARRAY_ITEMS \
-  {PROP_COLOR, "COLOR", 0, "Color", ""}, \
-  {PROP_TRANSLATION, "TRANSLATION", 0, "Translation", ""}, \
+  {PROP_COLOR, "COLOR", 0, "Linear Color", "Color in the linear space"}, \
+  {PROP_TRANSLATION, "TRANSLATION", 0, "Translation", "Color in the gamma corrected space"}, \
   {PROP_DIRECTION, "DIRECTION", 0, "Direction", ""}, \
   {PROP_VELOCITY, "VELOCITY", 0, "Velocity", ""}, \
   {PROP_ACCELERATION, "ACCELERATION", 0, "Acceleration", ""}, \
   {PROP_MATRIX, "MATRIX", 0, "Matrix", ""}, \
-  {PROP_EULER, "EULER", 0, "Euler Angles", ""}, \
-  {PROP_QUATERNION, "QUATERNION", 0, "Quaternion", ""}, \
-  {PROP_AXISANGLE, "AXISANGLE", 0, "Axis-Angle", ""}, \
+  {PROP_EULER, "EULER", 0, "Euler Angles", "Euler rotation angles in radians"}, \
+  {PROP_QUATERNION, "QUATERNION", 0, "Quaternion", "Quaternion rotation (affects NLA blending)"}, \
+  {PROP_AXISANGLE, "AXISANGLE", 0, "Axis-Angle", "Angle and axis to rotate around"}, \
   {PROP_XYZ, "XYZ", 0, "XYZ", ""}, \
   {PROP_XYZ_LENGTH, "XYZ_LENGTH", 0, "XYZ Length", ""}, \
-  {PROP_COLOR_GAMMA, "COLOR_GAMMA", 0, "Color", ""}, \
+  {PROP_COLOR_GAMMA, "COLOR_GAMMA", 0, "Gamma-Corrected Color", ""}, \
   {PROP_COORDS, "COORDINATES", 0, "Coordinates", ""}, \
   /* Boolean. */ \
   {PROP_LAYER, "LAYER", 0, "Layer", ""}, \
@@ -154,6 +152,7 @@ const EnumPropertyItem rna_enum_property_unit_items[] = {
     {PROP_UNIT_TEMPERATURE, "TEMPERATURE", 0, "Temperature", ""},
     {PROP_UNIT_WAVELENGTH, "WAVELENGTH", 0, "Wavelength", ""},
     {PROP_UNIT_COLOR_TEMPERATURE, "COLOR_TEMPERATURE", 0, "Color Temperature", ""},
+    {PROP_UNIT_FREQUENCY, "FREQUENCY", 0, "Frequency", ""},
     {0, nullptr, 0, nullptr, nullptr},
 };
 
@@ -205,21 +204,22 @@ const EnumPropertyItem rna_enum_property_flag_enum_items[] = {
     {0, nullptr, 0, nullptr, nullptr},
 };
 
+static const EnumPropertyItem rna_enum_property_item_library_overridable{
+    PROPOVERRIDE_OVERRIDABLE_LIBRARY,
+    "LIBRARY_OVERRIDABLE",
+    0,
+    "Library Overridable",
+    "Make that property editable in library overrides of linked data-blocks.\n"
+    "NOTE: For a property to be overridable, its whole chain of parent properties must also be "
+    "defined as overridable"};
+
 const EnumPropertyItem rna_enum_property_override_flag_items[] = {
-    {PROPOVERRIDE_OVERRIDABLE_LIBRARY,
-     "LIBRARY_OVERRIDABLE",
-     0,
-     "Library Overridable",
-     "Make that property editable in library overrides of linked data-blocks"},
+    rna_enum_property_item_library_overridable,
     {0, nullptr, 0, nullptr, nullptr},
 };
 
 const EnumPropertyItem rna_enum_property_override_flag_collection_items[] = {
-    {PROPOVERRIDE_OVERRIDABLE_LIBRARY,
-     "LIBRARY_OVERRIDABLE",
-     0,
-     "Library Overridable",
-     "Make that property editable in library overrides of linked data-blocks"},
+    rna_enum_property_item_library_overridable,
     {PROPOVERRIDE_NO_PROP_NAME,
      "NO_PROPERTY_NAME",
      0,
@@ -554,7 +554,7 @@ bool rna_builtin_properties_lookup_string(PointerRNA *ptr, const char *key, Poin
 {
   StructRNA *srna;
   PropertyRNA *prop;
-  PointerRNA propptr = {nullptr};
+  PointerRNA propptr = {};
 
   srna = ptr->type;
 
@@ -1256,7 +1256,7 @@ static bool rna_BlenderRNA_structs_lookup_int(PointerRNA *ptr, int index, Pointe
   StructRNA *srna = static_cast<StructRNA *>(
       index < brna->structs_len ? BLI_findlink(&brna->structs, index) : nullptr);
   if (srna != nullptr) {
-    *r_ptr = RNA_pointer_create(nullptr, &RNA_Struct, srna);
+    *r_ptr = RNA_pointer_create_discrete(nullptr, &RNA_Struct, srna);
     return true;
   }
   else {
@@ -1270,7 +1270,7 @@ static bool rna_BlenderRNA_structs_lookup_string(PointerRNA *ptr,
   BlenderRNA *brna = static_cast<BlenderRNA *>(ptr->data);
   StructRNA *srna = static_cast<StructRNA *>(BLI_ghash_lookup(brna->structs_map, (void *)key));
   if (srna != nullptr) {
-    *r_ptr = RNA_pointer_create(nullptr, &RNA_Struct, srna);
+    *r_ptr = RNA_pointer_create_discrete(nullptr, &RNA_Struct, srna);
     return true;
   }
 
@@ -1290,8 +1290,8 @@ struct RNACompareOverrideDiffPropPtrContext {
   /** RNA pointer specific diffing parameters. */
   ID *owner_id_a = nullptr;
   ID *owner_id_b = nullptr;
-  PointerRNA propptr_a = {0};
-  PointerRNA propptr_b = {0};
+  PointerRNA propptr_a = {};
+  PointerRNA propptr_b = {};
   PropertyType property_type = PROP_BOOLEAN;
 
   /**
@@ -1588,8 +1588,8 @@ static void rna_property_override_diff_propptr(Main *bmain,
                * liboverride is not matching its reference anymore. */
               opop->flag &= ~LIBOVERRIDE_OP_FLAG_IDPOINTER_MATCH_REFERENCE;
             }
-            else if ((owner_id_a->tag & LIB_TAG_LIBOVERRIDE_NEED_RESYNC) != 0 ||
-                     (owner_id_b->tag & LIB_TAG_LIBOVERRIDE_NEED_RESYNC) != 0)
+            else if ((owner_id_a->tag & ID_TAG_LIBOVERRIDE_NEED_RESYNC) != 0 ||
+                     (owner_id_b->tag & ID_TAG_LIBOVERRIDE_NEED_RESYNC) != 0)
             {
               /* In case one of the owner of the checked property is tagged as needing resync, do
                * not change the 'match reference' status of its ID pointer properties overrides,
@@ -1747,8 +1747,8 @@ void rna_property_override_diff_default(Main *bmain, RNAPropertyOverrideDiffCont
 {
   PropertyRNAOrID *prop_a = rnadiff_ctx.prop_a;
   PropertyRNAOrID *prop_b = rnadiff_ctx.prop_b;
-  PointerRNA *ptr_a = &prop_a->ptr;
-  PointerRNA *ptr_b = &prop_b->ptr;
+  PointerRNA *ptr_a = prop_a->ptr;
+  PointerRNA *ptr_b = prop_b->ptr;
   PropertyRNA *rawprop_a = prop_a->rawprop;
   PropertyRNA *rawprop_b = prop_b->rawprop;
   const uint len_a = prop_a->array_len;
@@ -3183,6 +3183,7 @@ static void rna_def_property(BlenderRNA *brna)
   RNA_def_property_enum_items(prop, rna_enum_property_subtype_items);
   RNA_def_property_enum_funcs(prop, "rna_Property_subtype_get", nullptr, nullptr);
   RNA_def_property_ui_text(prop, "Subtype", "Semantic interpretation of the property");
+  RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_UNIT);
 
   prop = RNA_def_property(srna, "srna", PROP_POINTER, PROP_NONE);
   RNA_def_property_clear_flag(prop, PROP_EDITABLE);
@@ -3194,6 +3195,7 @@ static void rna_def_property(BlenderRNA *brna)
   prop = RNA_def_property(srna, "unit", PROP_ENUM, PROP_NONE);
   RNA_def_property_clear_flag(prop, PROP_EDITABLE);
   RNA_def_property_enum_items(prop, rna_enum_property_unit_items);
+  RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_UNIT);
   RNA_def_property_enum_funcs(prop, "rna_Property_unit_get", nullptr, nullptr);
   RNA_def_property_ui_text(prop, "Unit", "Type of units for this property");
 

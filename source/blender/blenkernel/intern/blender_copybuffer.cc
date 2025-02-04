@@ -10,12 +10,6 @@
 
 #include <cstdlib>
 
-#include "MEM_guardedalloc.h"
-
-#include "DNA_userdef_types.h"
-
-#include "BLI_utildefines.h"
-
 #include "BKE_blender_copybuffer.hh" /* own include */
 #include "BKE_blendfile_link_append.hh"
 #include "BKE_context.hh"
@@ -30,7 +24,7 @@
 #include "IMB_colormanagement.hh"
 
 /* -------------------------------------------------------------------- */
-/** \name Paste API based on 'partial' blendfiles.
+/** \name Paste API based on 'partial' blend-files.
  * \{ */
 
 /* Common helper for paste functions. */
@@ -39,7 +33,9 @@ static void copybuffer_append(BlendfileLinkAppendContext *lapp_context,
                               ReportList *reports)
 {
   /* Tag existing IDs in given `bmain_dst` as already existing. */
-  BKE_main_id_tag_all(bmain, LIB_TAG_PRE_EXISTING, true);
+  BKE_main_id_tag_all(bmain, ID_TAG_PRE_EXISTING, true);
+
+  BKE_blendfile_link_append_context_init_done(lapp_context);
 
   BKE_blendfile_link(lapp_context, reports);
 
@@ -50,9 +46,14 @@ static void copybuffer_append(BlendfileLinkAppendContext *lapp_context,
   /* Append, rather than linking */
   BKE_blendfile_append(lapp_context, reports);
 
+  /* Instantiate loose data in the scene (e.g. add object to the active collection). */
+  BKE_blendfile_link_append_instantiate_loose(lapp_context, reports);
+
+  BKE_blendfile_link_append_context_finalize(lapp_context);
+
   /* This must be unset, otherwise these object won't link into other scenes from this blend
    * file. */
-  BKE_main_id_tag_all(bmain, LIB_TAG_PRE_EXISTING, false);
+  BKE_main_id_tag_all(bmain, ID_TAG_PRE_EXISTING, false);
 
   /* Recreate dependency graph to include new objects. */
   DEG_relations_tag_update(bmain);

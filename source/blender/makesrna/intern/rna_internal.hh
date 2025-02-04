@@ -8,13 +8,11 @@
 
 #pragma once
 
-#include "BLI_utildefines.h"
-
 #include "BLI_compiler_attrs.h"
 
 #include "rna_internal_types.hh"
 
-#include "UI_resources.hh"
+#include "UI_resources.hh" /* IWYU pragma: export */
 
 #define RNA_MAGIC ((int)~0)
 
@@ -22,7 +20,6 @@ enum class AttributeOwnerType;
 
 struct FreestyleSettings;
 struct ID;
-struct IDOverrideLibrary;
 struct IDProperty;
 struct FreestyleLineSet;
 struct FreestyleModuleConfig;
@@ -167,6 +164,7 @@ void RNA_def_key(BlenderRNA *brna);
 void RNA_def_light(BlenderRNA *brna);
 void RNA_def_lattice(BlenderRNA *brna);
 void RNA_def_linestyle(BlenderRNA *brna);
+void RNA_def_blendfile_import(BlenderRNA *brna);
 void RNA_def_main(BlenderRNA *brna);
 void RNA_def_material(BlenderRNA *brna);
 void RNA_def_mesh(BlenderRNA *brna);
@@ -224,6 +222,7 @@ void rna_AttributeGroup_iterator_begin(CollectionPropertyIterator *iter, Pointer
 void rna_AttributeGroup_iterator_next(CollectionPropertyIterator *iter);
 PointerRNA rna_AttributeGroup_iterator_get(CollectionPropertyIterator *iter);
 int rna_AttributeGroup_length(PointerRNA *ptr);
+bool rna_AttributeGroup_lookup_string(PointerRNA *ptr, const char *key, PointerRNA *r_ptr);
 
 void rna_AttributeGroup_color_iterator_begin(CollectionPropertyIterator *iter, PointerRNA *ptr);
 void rna_AttributeGroup_color_iterator_next(CollectionPropertyIterator *iter);
@@ -407,6 +406,11 @@ void rna_userdef_is_dirty_update_impl();
  */
 void rna_userdef_is_dirty_update(Main *bmain, Scene *scene, PointerRNA *ptr);
 
+const EnumPropertyItem *rna_WorkSpaceTool_brush_type_itemf(bContext *C,
+                                                           PointerRNA *ptr,
+                                                           PropertyRNA *prop,
+                                                           bool *r_free);
+
 /* API functions */
 
 void RNA_api_action(StructRNA *srna);
@@ -448,7 +452,7 @@ void RNA_api_pose(StructRNA *srna);
 void RNA_api_pose_channel(StructRNA *srna);
 void RNA_api_scene(StructRNA *srna);
 void RNA_api_scene_render(StructRNA *srna);
-void RNA_api_sequence_strip(StructRNA *srna);
+void RNA_api_strip(StructRNA *srna);
 void RNA_api_text(StructRNA *srna);
 void RNA_api_ui_layout(StructRNA *srna);
 void RNA_api_window(StructRNA *srna);
@@ -458,9 +462,9 @@ void RNA_api_space_text(StructRNA *srna);
 void RNA_api_space_filebrowser(StructRNA *srna);
 void RNA_api_region_view3d(StructRNA *srna);
 void RNA_api_texture(StructRNA *srna);
-void RNA_api_sequences(BlenderRNA *brna, PropertyRNA *cprop, bool metastrip);
-void RNA_api_sequence_elements(BlenderRNA *brna, PropertyRNA *cprop);
-void RNA_api_sequence_retiming_keys(BlenderRNA *brna, PropertyRNA *cprop);
+void RNA_api_strips(StructRNA *srna, bool metastrip);
+void RNA_api_strip_elements(BlenderRNA *brna, PropertyRNA *cprop);
+void RNA_api_strip_retiming_keys(BlenderRNA *brna);
 void RNA_api_sound(StructRNA *srna);
 void RNA_api_vfont(StructRNA *srna);
 void RNA_api_workspace(StructRNA *srna);
@@ -577,8 +581,8 @@ PointerRNA rna_array_lookup_int(
 /* Duplicated code since we can't link in blenlib */
 
 #ifndef RNA_RUNTIME
-void *rna_alloc_from_buffer(const char *buffer, int buffer_len);
-void *rna_calloc(int buffer_len);
+void *rna_alloc_from_buffer(const char *buffer, int buffer_size);
+void *rna_calloc(int buffer_size);
 #endif
 
 void rna_addtail(ListBase *listbase, void *vlink);
@@ -607,7 +611,7 @@ void rna_mtex_texture_slots_clear(ID *self, bContext *C, ReportList *reports, in
 
 bool rna_IDMaterials_assign_int(PointerRNA *ptr, int key, const PointerRNA *assign_ptr);
 
-const char *rna_translate_ui_text(
+std::optional<blender::StringRefNull> rna_translate_ui_text(
     const char *text, const char *text_ctxt, StructRNA *type, PropertyRNA *prop, bool translate);
 
 /* Internal functions that cycles uses so we need to declare (not ideal!). */

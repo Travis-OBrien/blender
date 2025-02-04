@@ -8,25 +8,14 @@
 
 #include <cstdlib>
 
-#include "RNA_access.hh"
 #include "RNA_define.hh"
 #include "RNA_enum_types.hh"
 
 #include "rna_internal.hh"
 
-#include "DNA_curves_types.h"
 #include "DNA_customdata_types.h"
-#include "DNA_grease_pencil_types.h"
-#include "DNA_mesh_types.h"
-#include "DNA_meshdata_types.h"
-#include "DNA_pointcloud_types.h"
-
-#include "BLI_math_color.h"
 
 #include "BKE_attribute.hh"
-#include "BKE_customdata.hh"
-
-#include "BLT_translation.hh"
 
 #include "WM_types.hh"
 
@@ -46,6 +35,7 @@ const EnumPropertyItem rna_enum_attribute_type_items[] = {
     {CD_PROP_BOOL, "BOOLEAN", 0, "Boolean", "True or false"},
     {CD_PROP_FLOAT2, "FLOAT2", 0, "2D Vector", "2D vector with floating-point values"},
     {CD_PROP_INT8, "INT8", 0, "8-Bit Integer", "Smaller integer with a range from -128 to 127"},
+    {CD_PROP_INT16_2D, "INT16_2D", 0, "2D 16-Bit Integer Vector", "16-bit signed integer vector"},
     {CD_PROP_INT32_2D, "INT32_2D", 0, "2D Integer Vector", "32-bit signed integer vector"},
     {CD_PROP_QUATERNION, "QUATERNION", 0, "Quaternion", "Floating point quaternion rotation"},
     {CD_PROP_FLOAT4X4, "FLOAT4X4", 0, "4x4 Matrix", "Floating point matrix"},
@@ -76,6 +66,7 @@ const EnumPropertyItem rna_enum_attribute_type_with_auto_items[] = {
     {CD_PROP_BOOL, "BOOLEAN", 0, "Boolean", "True or false"},
     {CD_PROP_FLOAT2, "FLOAT2", 0, "2D Vector", "2D vector with floating-point values"},
     {CD_PROP_FLOAT2, "FLOAT2", 0, "2D Vector", "2D vector with floating-point values"},
+    {CD_PROP_INT16_2D, "INT16_2D", 0, "2D 16-Bit Integer Vector", "16-bit signed integer vector"},
     {CD_PROP_INT32_2D, "INT32_2D", 0, "2D Integer Vector", "32-bit signed integer vector"},
     {CD_PROP_QUATERNION, "QUATERNION", 0, "Quaternion", "Floating point quaternion rotation"},
     {CD_PROP_FLOAT4X4, "FLOAT4X4", 0, "4x4 Matrix", "Floating point matrix"},
@@ -176,6 +167,15 @@ const EnumPropertyItem rna_enum_attribute_curves_domain_items[] = {
 
 #  include <fmt/format.h>
 
+#  include "DNA_customdata_types.h"
+#  include "DNA_grease_pencil_types.h"
+#  include "DNA_mesh_types.h"
+#  include "DNA_meshdata_types.h"
+
+#  include "BLI_string.h"
+
+#  include "BKE_customdata.hh"
+
 #  include "DEG_depsgraph.hh"
 
 #  include "BLT_translation.hh"
@@ -260,6 +260,8 @@ static StructRNA *srna_by_custom_data_layer_type(const eCustomDataType type)
       return &RNA_Float2Attribute;
     case CD_PROP_INT8:
       return &RNA_ByteIntAttribute;
+    case CD_PROP_INT16_2D:
+      return &RNA_Short2Attribute;
     case CD_PROP_INT32_2D:
       return &RNA_Int2Attribute;
     case CD_PROP_QUATERNION:
@@ -332,7 +334,7 @@ const EnumPropertyItem *rna_enum_attribute_domain_itemf(const AttributeOwner &ow
       continue;
     }
     if (owner.type() == AttributeOwnerType::GreasePencil &&
-        ELEM(domain_item->value, int(AttrDomain::Layer)))
+        !ELEM(domain_item->value, int(AttrDomain::Layer)))
     {
       continue;
     }
@@ -512,7 +514,7 @@ static PointerRNA rna_AttributeGroupID_new(
   DEG_id_tag_update(id, ID_RECALC_GEOMETRY);
   WM_main_add_notifier(NC_GEOM | ND_DATA, id);
 
-  PointerRNA ptr = RNA_pointer_create(id, &RNA_Attribute, layer);
+  PointerRNA ptr = RNA_pointer_create_discrete(id, &RNA_Attribute, layer);
   return ptr;
 }
 
@@ -636,6 +638,32 @@ int rna_AttributeGroup_length(PointerRNA *ptr)
   return BKE_attributes_length(owner, ATTR_DOMAIN_MASK_ALL, CD_MASK_PROP_ALL);
 }
 
+bool rna_AttributeGroup_lookup_string(PointerRNA *ptr, const char *key, PointerRNA *r_ptr)
+{
+  AttributeOwner owner = owner_from_pointer_rna(ptr);
+
+  if (CustomDataLayer *layer = BKE_attribute_search_for_write(
+          owner, key, CD_MASK_PROP_ALL, ATTR_DOMAIN_MASK_ALL))
+  {
+    *r_ptr = RNA_pointer_create_discrete(ptr->owner_id, &RNA_Attribute, layer);
+    return true;
+  }
+
+  /* Support retrieving UV seam name convention with older name. To be removed as part of 5.0
+   * breaking changes. */
+  if (STREQ(key, ".uv_seam")) {
+    if (CustomDataLayer *layer = BKE_attribute_search_for_write(
+            owner, "uv_seam", CD_MASK_PROP_ALL, ATTR_DOMAIN_MASK_ALL))
+    {
+      *r_ptr = RNA_pointer_create_discrete(ptr->owner_id, &RNA_Attribute, layer);
+      return true;
+    }
+  }
+
+  *r_ptr = PointerRNA_NULL;
+  return false;
+}
+
 static int rna_AttributeGroupID_active_index_get(PointerRNA *ptr)
 {
   AttributeOwner owner = AttributeOwner::from_id(ptr->owner_id);
@@ -647,7 +675,7 @@ static PointerRNA rna_AttributeGroupID_active_get(PointerRNA *ptr)
   AttributeOwner owner = AttributeOwner::from_id(ptr->owner_id);
   CustomDataLayer *layer = BKE_attributes_active_get(owner);
 
-  PointerRNA attribute_ptr = RNA_pointer_create(ptr->owner_id, &RNA_Attribute, layer);
+  PointerRNA attribute_ptr = RNA_pointer_create_discrete(ptr->owner_id, &RNA_Attribute, layer);
   return attribute_ptr;
 }
 
@@ -657,20 +685,25 @@ static void rna_AttributeGroupID_active_set(PointerRNA *ptr,
 {
   AttributeOwner owner = AttributeOwner::from_id(ptr->owner_id);
   CustomDataLayer *layer = static_cast<CustomDataLayer *>(attribute_ptr.data);
-  BKE_attributes_active_set(owner, layer->name);
+  if (layer) {
+    BKE_attributes_active_set(owner, layer->name);
+  }
+  else {
+    BKE_attributes_active_clear(owner);
+  }
 }
 
 static void rna_AttributeGroupID_active_index_set(PointerRNA *ptr, int value)
 {
   AttributeOwner owner = AttributeOwner::from_id(ptr->owner_id);
-  *BKE_attributes_active_index_p(owner) = value;
+  *BKE_attributes_active_index_p(owner) = std::max(-1, value);
 }
 
 static void rna_AttributeGroupID_active_index_range(
     PointerRNA *ptr, int *min, int *max, int *softmin, int *softmax)
 {
   AttributeOwner owner = AttributeOwner::from_id(ptr->owner_id);
-  *min = 0;
+  *min = -1;
   *max = BKE_attributes_length(owner, ATTR_DOMAIN_MASK_ALL, CD_MASK_PROP_ALL);
 
   *softmin = *min;
@@ -710,7 +743,7 @@ static PointerRNA rna_AttributeGroupMesh_active_color_get(PointerRNA *ptr)
       CD_MASK_COLOR_ALL,
       ATTR_DOMAIN_MASK_COLOR);
 
-  PointerRNA attribute_ptr = RNA_pointer_create(ptr->owner_id, &RNA_Attribute, layer);
+  PointerRNA attribute_ptr = RNA_pointer_create_discrete(ptr->owner_id, &RNA_Attribute, layer);
   return attribute_ptr;
 }
 
@@ -720,7 +753,12 @@ static void rna_AttributeGroupMesh_active_color_set(PointerRNA *ptr,
 {
   ID *id = ptr->owner_id;
   CustomDataLayer *layer = static_cast<CustomDataLayer *>(attribute_ptr.data);
-  BKE_id_attributes_active_color_set(id, layer->name);
+  if (layer) {
+    BKE_id_attributes_active_color_set(id, layer->name);
+  }
+  else {
+    BKE_id_attributes_active_color_clear(id);
+  }
 }
 
 static int rna_AttributeGroupMesh_active_color_index_get(PointerRNA *ptr)
@@ -872,7 +910,7 @@ static PointerRNA rna_AttributeGroupGreasePencilDrawing_new(ID *grease_pencil_id
   DEG_id_tag_update(grease_pencil_id, ID_RECALC_GEOMETRY);
   WM_main_add_notifier(NC_GEOM | ND_DATA, grease_pencil_id);
 
-  PointerRNA ptr = RNA_pointer_create(grease_pencil_id, &RNA_Attribute, layer);
+  PointerRNA ptr = RNA_pointer_create_discrete(grease_pencil_id, &RNA_Attribute, layer);
   return ptr;
 }
 
@@ -896,7 +934,7 @@ static PointerRNA rna_AttributeGroupGreasePencilDrawing_active_get(PointerRNA *p
   AttributeOwner owner = AttributeOwner(AttributeOwnerType::GreasePencilDrawing, drawing);
   CustomDataLayer *layer = BKE_attributes_active_get(owner);
 
-  PointerRNA attribute_ptr = RNA_pointer_create(ptr->owner_id, &RNA_Attribute, layer);
+  PointerRNA attribute_ptr = RNA_pointer_create_discrete(ptr->owner_id, &RNA_Attribute, layer);
   return attribute_ptr;
 }
 
@@ -907,7 +945,12 @@ static void rna_AttributeGroupGreasePencilDrawing_active_set(PointerRNA *ptr,
   GreasePencilDrawing *drawing = static_cast<GreasePencilDrawing *>(ptr->data);
   AttributeOwner owner = AttributeOwner(AttributeOwnerType::GreasePencilDrawing, drawing);
   CustomDataLayer *layer = static_cast<CustomDataLayer *>(attribute_ptr.data);
-  BKE_attributes_active_set(owner, layer->name);
+  if (layer) {
+    BKE_attributes_active_set(owner, layer->name);
+  }
+  else {
+    BKE_attributes_active_clear(owner);
+  }
 }
 
 static bool rna_AttributeGroupGreasePencilDrawing_active_poll(PointerRNA *ptr,
@@ -929,7 +972,7 @@ static void rna_AttributeGroupGreasePencilDrawing_active_index_set(PointerRNA *p
 {
   GreasePencilDrawing *drawing = static_cast<GreasePencilDrawing *>(ptr->data);
   AttributeOwner owner = AttributeOwner(AttributeOwnerType::GreasePencilDrawing, drawing);
-  *BKE_attributes_active_index_p(owner) = value;
+  *BKE_attributes_active_index_p(owner) = std::max(-1, value);
 }
 
 static void rna_AttributeGroupGreasePencilDrawing_active_index_range(
@@ -937,7 +980,7 @@ static void rna_AttributeGroupGreasePencilDrawing_active_index_range(
 {
   GreasePencilDrawing *drawing = static_cast<GreasePencilDrawing *>(ptr->data);
   AttributeOwner owner = AttributeOwner(AttributeOwnerType::GreasePencilDrawing, drawing);
-  *min = 0;
+  *min = -1;
   *max = BKE_attributes_length(owner, ATTR_DOMAIN_MASK_ALL, CD_MASK_PROP_ALL);
 
   *softmin = *min;
@@ -1255,6 +1298,43 @@ static void rna_def_attribute_int8(BlenderRNA *brna)
   RNA_def_property_int_sdna(prop, nullptr, "i");
 }
 
+static void rna_def_attribute_short2(BlenderRNA *brna)
+{
+  StructRNA *srna;
+  PropertyRNA *prop;
+
+  srna = RNA_def_struct(brna, "Short2Attribute", "Attribute");
+  RNA_def_struct_sdna(srna, "CustomDataLayer");
+  RNA_def_struct_ui_text(srna,
+                         "2D 16-Bit Integer Vector Attribute",
+                         "Geometry attribute that stores 2D integer vectors");
+
+  prop = RNA_def_property(srna, "data", PROP_COLLECTION, PROP_NONE);
+  RNA_def_property_struct_type(prop, "Short2AttributeValue");
+  RNA_def_property_override_flag(prop, PROPOVERRIDE_IGNORE);
+  RNA_def_property_collection_funcs(prop,
+                                    "rna_Attribute_data_begin",
+                                    "rna_iterator_array_next",
+                                    "rna_iterator_array_end",
+                                    "rna_iterator_array_get",
+                                    "rna_Attribute_data_length",
+                                    nullptr,
+                                    nullptr,
+                                    nullptr);
+  RNA_def_property_update(prop, 0, "rna_Attribute_update_data");
+
+  srna = RNA_def_struct(brna, "Short2AttributeValue", nullptr);
+  RNA_def_struct_sdna(srna, "vec2s");
+  RNA_def_struct_ui_text(
+      srna, "2D 16-Bit Integer Vector Attribute Value", "2D value in geometry attribute");
+
+  prop = RNA_def_property(srna, "value", PROP_INT, PROP_NONE);
+  RNA_def_property_ui_text(prop, "Vector", "2D vector");
+  RNA_def_property_int_sdna(prop, nullptr, "x");
+  RNA_def_property_array(prop, 2);
+  RNA_def_property_update(prop, 0, "rna_Attribute_update_data");
+}
+
 static void rna_def_attribute_int2(BlenderRNA *brna)
 {
   StructRNA *srna;
@@ -1446,6 +1526,7 @@ static void rna_def_attribute(BlenderRNA *brna)
   rna_def_attribute_float_color(brna);
   rna_def_attribute_byte_color(brna);
   rna_def_attribute_int(brna);
+  rna_def_attribute_short2(brna);
   rna_def_attribute_int2(brna);
   rna_def_attribute_quaternion(brna);
   rna_def_attribute_float4x4(brna);
@@ -1504,7 +1585,9 @@ static void rna_def_attribute_group_id_common(StructRNA *srna)
   RNA_def_property_update(prop, 0, "rna_AttributeGroup_update_active");
 
   prop = RNA_def_property(srna, "active_index", PROP_INT, PROP_NONE);
-  RNA_def_property_ui_text(prop, "Active Attribute Index", "Active attribute index");
+  RNA_def_property_ui_text(
+      prop, "Active Attribute Index", "Active attribute index or -1 when none are active");
+  RNA_def_property_range(prop, -1, INT_MAX);
   RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
   RNA_def_property_int_funcs(prop,
                              "rna_AttributeGroupID_active_index_get",
@@ -1679,7 +1762,9 @@ static void rna_def_attribute_group_grease_pencil_drawing(BlenderRNA *brna)
   RNA_def_property_update(prop, 0, "rna_AttributeGroup_update_active");
 
   prop = RNA_def_property(srna, "active_index", PROP_INT, PROP_NONE);
-  RNA_def_property_ui_text(prop, "Active Attribute Index", "Active attribute index");
+  RNA_def_property_ui_text(
+      prop, "Active Attribute Index", "Active attribute index or -1 when none are active");
+  RNA_def_property_range(prop, -1, INT_MAX);
   RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
   RNA_def_property_int_funcs(prop,
                              "rna_AttributeGroupGreasePencilDrawing_active_index_get",
@@ -1715,7 +1800,7 @@ void rna_def_attributes_common(StructRNA *srna, const AttributeOwnerType type)
                                     "rna_AttributeGroup_iterator_get",
                                     "rna_AttributeGroup_length",
                                     nullptr,
-                                    nullptr,
+                                    "rna_AttributeGroup_lookup_string",
                                     nullptr);
   RNA_def_property_struct_type(prop, "Attribute");
   RNA_def_property_ui_text(prop, "Attributes", "Geometry attributes");

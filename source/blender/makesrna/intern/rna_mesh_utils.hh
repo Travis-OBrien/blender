@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "BKE_anonymous_attribute_id.hh"  // IWYU pragma: export
+
 /* Macros to help reduce code clutter in rna_mesh.cc */
 
 /* Define the accessors for a basic CustomDataLayer collection, skipping anonymous layers */
@@ -17,7 +19,7 @@
                                                              void *data) \
   { \
     CustomDataLayer *layer = (CustomDataLayer *)data; \
-    return (layer->anonymous_id != NULL || layer->type != layer_type); \
+    return (blender::bke::attribute_name_is_anonymous(layer->name) || layer->type != layer_type); \
   } \
   /* begin */ \
   [[maybe_unused]] static void rna_Mesh_##collection_name##s_begin( \

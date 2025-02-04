@@ -8,7 +8,7 @@
 
 /* global includes */
 
-#include <cmath>
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -30,19 +30,19 @@
 
 #include "BLF_api.hh"
 
-#include "BLI_blenlib.h"
 #include "BLI_fileops.h"
 #include "BLI_fileops_types.h"
 #include "BLI_fnmatch.h"
 #include "BLI_ghash.h"
 #include "BLI_linklist.h"
 #include "BLI_math_vector.h"
+#include "BLI_path_utils.hh"
 #include "BLI_stack.h"
+#include "BLI_string.h"
 #include "BLI_string_utils.hh"
 #include "BLI_task.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
-#include "BLI_uuid.h"
 
 #ifdef WIN32
 #  include "BLI_winstuff.h"
@@ -61,12 +61,13 @@
 #include "DNA_asset_types.h"
 #include "DNA_space_types.h"
 
-#include "ED_datafiles.h"
 #include "ED_fileselect.hh"
 
 #include "IMB_imbuf.hh"
 #include "IMB_imbuf_types.hh"
 #include "IMB_thumbs.hh"
+
+#include "MOV_util.hh"
 
 #include "WM_api.hh"
 #include "WM_types.hh"
@@ -313,22 +314,15 @@ enum FileListTags {
   FILELIST_TAGS_NO_THREADS = (1 << 2),
 };
 
-#define SPECIAL_IMG_SIZE 256
-#define SPECIAL_IMG_ROWS 1
-#define SPECIAL_IMG_COLS 7
-
-enum {
-  SPECIAL_IMG_DOCUMENT = 0,
-  SPECIAL_IMG_DRIVE_DISC = 1,
-  SPECIAL_IMG_FOLDER = 2,
-  SPECIAL_IMG_PARENT = 3,
-  SPECIAL_IMG_DRIVE_FIXED = 4,
-  SPECIAL_IMG_DRIVE_ATTACHED = 5,
-  SPECIAL_IMG_DRIVE_REMOTE = 6,
-  SPECIAL_IMG_MAX,
+enum class SpecialFileImages {
+  Document,
+  Folder,
+  Parent,
+  /* Keep this last. */
+  _Max,
 };
 
-static ImBuf *gSpecialFileImages[SPECIAL_IMG_MAX];
+static ImBuf *gSpecialFileImages[int(SpecialFileImages::_Max)];
 
 static void filelist_readjob_main(FileListReadJob *job_params,
                                   bool *stop,
@@ -603,10 +597,10 @@ static int compare_asset_catalog(void *user_data, const void *a1, const void *a2
   if (asset1 && !asset2) {
     return 1;
   }
-  else if (!asset1 && asset2) {
+  if (!asset1 && asset2) {
     return -1;
   }
-  else if (!asset1 && !asset2) {
+  if (!asset1 && !asset2) {
     if (int order = compare_direntry_generic(entry1, entry2); order) {
       return compare_apply_inverted(order, sort_data);
     }
@@ -632,7 +626,7 @@ static int compare_asset_catalog(void *user_data, const void *a1, const void *a2
     order = -1;
   }
   else if (catalog1 && catalog2) {
-    order = BLI_strcasecmp_natural(catalog1->path.name().c_str(), catalog2->path.name().c_str());
+    order = BLI_strcasecmp_natural(catalog1->path.c_str(), catalog2->path.c_str());
   }
 
   if (!order) {
@@ -1132,38 +1126,11 @@ void filelist_setlibrary(FileList *filelist, const AssetLibraryReference *asset_
 
 /* ********** Icon/image helpers ********** */
 
-static ImBuf *fileimage_from_icon(int icon_id)
-{
-  int width;
-  int height;
-  blender::Array<uchar> bitmap = BLF_svg_icon_bitmap(icon_id, 256.0f, &width, &height);
-  if (bitmap.is_empty()) {
-    return nullptr;
-  }
-  ImBuf *ibuf = IMB_allocFromBuffer(bitmap.data(), nullptr, width, height, 4);
-  IMB_flipy(ibuf);
-  return ibuf;
-}
-
-void filelist_init_icons()
-{
-  BLI_assert(G.background == false);
-#ifndef WITH_HEADLESS
-  gSpecialFileImages[SPECIAL_IMG_DOCUMENT] = fileimage_from_icon(ICON_FILE_LARGE);
-  gSpecialFileImages[SPECIAL_IMG_DRIVE_DISC] = fileimage_from_icon(ICON_DISC_LARGE);
-  gSpecialFileImages[SPECIAL_IMG_FOLDER] = fileimage_from_icon(ICON_FILE_FOLDER_LARGE);
-  gSpecialFileImages[SPECIAL_IMG_PARENT] = fileimage_from_icon(ICON_FILE_PARENT_LARGE);
-  gSpecialFileImages[SPECIAL_IMG_DRIVE_FIXED] = fileimage_from_icon(ICON_DISK_DRIVE_LARGE);
-  gSpecialFileImages[SPECIAL_IMG_DRIVE_ATTACHED] = fileimage_from_icon(ICON_EXTERNAL_DRIVE_LARGE);
-  gSpecialFileImages[SPECIAL_IMG_DRIVE_REMOTE] = fileimage_from_icon(ICON_NETWORK_DRIVE_LARGE);
-#endif
-}
-
 void filelist_free_icons()
 {
   BLI_assert(G.background == false);
 
-  for (int i = 0; i < SPECIAL_IMG_MAX; i++) {
+  for (int i = 0; i < int(SpecialFileImages::_Max); i++) {
     IMB_freeImBuf(gSpecialFileImages[i]);
     gSpecialFileImages[i] = nullptr;
   }
@@ -1198,47 +1165,56 @@ static FileDirEntry *filelist_geticon_get_file(FileList *filelist, const int ind
   return filelist_file(filelist, index);
 }
 
-ImBuf *filelist_getimage(FileList *filelist, const int index)
+ImBuf *filelist_get_preview_image(FileList *filelist, const int index)
 {
   FileDirEntry *file = filelist_geticon_get_file(filelist, index);
 
   return file->preview_icon_id ? BKE_icon_imbuf_get_buffer(file->preview_icon_id) : nullptr;
 }
 
-ImBuf *filelist_file_getimage(const FileDirEntry *file)
+ImBuf *filelist_file_get_preview_image(const FileDirEntry *file)
 {
   return file->preview_icon_id ? BKE_icon_imbuf_get_buffer(file->preview_icon_id) : nullptr;
 }
 
-ImBuf *filelist_geticon_image_ex(const FileDirEntry *file)
+static ImBuf *filelist_ensure_special_file_image(SpecialFileImages image, int icon)
+{
+  ImBuf *ibuf = gSpecialFileImages[int(image)];
+  if (ibuf) {
+    return ibuf;
+  }
+  return gSpecialFileImages[int(image)] = UI_svg_icon_bitmap(icon, 256.0f, false);
+}
+
+ImBuf *filelist_geticon_special_file_image_ex(const FileDirEntry *file)
 {
   ImBuf *ibuf = nullptr;
 
   if (file->typeflag & FILE_TYPE_DIR) {
     if (FILENAME_IS_PARENT(file->relpath)) {
-      ibuf = gSpecialFileImages[SPECIAL_IMG_PARENT];
+      ibuf = filelist_ensure_special_file_image(SpecialFileImages::Parent, ICON_FILE_PARENT_LARGE);
     }
     else {
-      ibuf = gSpecialFileImages[SPECIAL_IMG_FOLDER];
+      ibuf = filelist_ensure_special_file_image(SpecialFileImages::Folder, ICON_FILE_FOLDER_LARGE);
     }
   }
   else {
-    ibuf = gSpecialFileImages[SPECIAL_IMG_DOCUMENT];
+    ibuf = filelist_ensure_special_file_image(SpecialFileImages::Document, ICON_FILE_LARGE);
   }
 
   return ibuf;
 }
 
-ImBuf *filelist_geticon_image(FileList *filelist, const int index)
+ImBuf *filelist_geticon_special_file_image(FileList *filelist, const int index)
 {
   FileDirEntry *file = filelist_geticon_get_file(filelist, index);
-  return filelist_geticon_image_ex(file);
+  return filelist_geticon_special_file_image_ex(file);
 }
 
-static int filelist_geticon_ex(const FileList *filelist,
-                               const FileDirEntry *file,
-                               const bool is_main,
-                               const bool ignore_libdir)
+static int filelist_geticon_file_type_ex(const FileList *filelist,
+                                         const FileDirEntry *file,
+                                         const bool is_main,
+                                         const bool ignore_libdir)
 {
   const eFileSel_File_Types typeflag = (eFileSel_File_Types)file->typeflag;
 
@@ -1352,17 +1328,17 @@ static int filelist_geticon_ex(const FileList *filelist,
   return is_main ? ICON_FILE_BLANK : ICON_NONE;
 }
 
-int filelist_geticon(FileList *filelist, const int index, const bool is_main)
+int filelist_geticon_file_type(FileList *filelist, const int index, const bool is_main)
 {
   FileDirEntry *file = filelist_geticon_get_file(filelist, index);
 
-  return filelist_geticon_ex(filelist, file, is_main, false);
+  return filelist_geticon_file_type_ex(filelist, file, is_main, false);
 }
 
 int ED_file_icon(const FileDirEntry *file)
 {
   return file->preview_icon_id ? file->preview_icon_id :
-                                 filelist_geticon_ex(nullptr, file, false, false);
+                                 filelist_geticon_file_type_ex(nullptr, file, false, false);
 }
 
 static bool filelist_intern_entry_is_main_file(const FileListInternEntry *intern_entry)
@@ -1374,24 +1350,31 @@ static bool filelist_intern_entry_is_main_file(const FileListInternEntry *intern
 
 static void parent_dir_until_exists_or_default_root(char *dir)
 {
-  if (!BLI_path_parent_dir_until_exists(dir)) {
-#ifdef WIN32
-    BLI_windows_get_default_root_dir(dir);
-#else
-    ARRAY_SET_ITEMS(dir, '/', '\0');
-#endif
+  /* Only allow absolute paths as CWD relative doesn't make sense from the UI. */
+  if (BLI_path_is_abs_from_cwd(dir) && BLI_path_parent_dir_until_exists(dir)) {
+    return;
   }
+
+#ifdef WIN32
+  BLI_windows_get_default_root_dir(dir);
+#else
+  ARRAY_SET_ITEMS(dir, '/', '\0');
+#endif
 }
 
 static bool filelist_checkdir_dir(const FileList * /*filelist*/,
                                   char dirpath[FILE_MAX_LIBEXTRA],
                                   const bool do_change)
 {
+  bool is_valid;
   if (do_change) {
     parent_dir_until_exists_or_default_root(dirpath);
-    return true;
+    is_valid = true;
   }
-  return BLI_is_dir(dirpath);
+  else {
+    is_valid = BLI_path_is_abs_from_cwd(dirpath) && BLI_is_dir(dirpath);
+  }
+  return is_valid;
 }
 
 static bool filelist_checkdir_lib(const FileList * /*filelist*/,
@@ -1638,25 +1621,22 @@ static void filelist_cache_previews_free(FileListEntryCache *cache)
   cache->flags &= ~FLC_PREVIEWS_ACTIVE;
 }
 
-static void filelist_cache_previews_push(FileList *filelist, FileDirEntry *entry, const int index)
+/**
+ * Check if a preview for \a entry may be requested. Further conditions may apply, this just helps
+ * to skip plenty of entries where it's easy to tell that no valid preview will be available or is
+ * being loaded already.
+ */
+static bool filelist_file_preview_load_poll(const FileDirEntry *entry)
 {
-  FileListEntryCache *cache = &filelist->filelist_cache;
-
-  BLI_assert(cache->flags & FLC_PREVIEWS_ACTIVE);
-
-  if (entry->preview_icon_id) {
-    return;
-  }
-
   if (entry->flags & (FILE_ENTRY_INVALID_PREVIEW | FILE_ENTRY_PREVIEW_LOADING)) {
-    return;
+    return false;
   }
 
   if (!(entry->typeflag &
         (FILE_TYPE_IMAGE | FILE_TYPE_MOVIE | FILE_TYPE_FTFONT | FILE_TYPE_OBJECT_IO |
          FILE_TYPE_BLENDER | FILE_TYPE_BLENDER_BACKUP | FILE_TYPE_BLENDERLIB)))
   {
-    return;
+    return false;
   }
 
   /* If we know this is an external ID without a preview, skip loading the preview. Can save quite
@@ -1665,21 +1645,42 @@ static void filelist_cache_previews_push(FileList *filelist, FileDirEntry *entry
   if ((entry->typeflag & FILE_TYPE_BLENDERLIB) &&
       (entry->flags & FILE_ENTRY_BLENDERLIB_NO_PREVIEW))
   {
-    return;
+    return false;
   }
 
   /* External ID that is also a directory is never previewed. */
   if ((entry->typeflag & (FILE_TYPE_BLENDERLIB | FILE_TYPE_DIR)) ==
       (FILE_TYPE_BLENDERLIB | FILE_TYPE_DIR))
   {
-    return;
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * \return True if a new preview request was pushed, false otherwise (e.g. because the preview is
+ * already loaded, invalid or not supported).
+ */
+static bool filelist_cache_previews_push(FileList *filelist, FileDirEntry *entry, const int index)
+{
+  FileListEntryCache *cache = &filelist->filelist_cache;
+
+  BLI_assert(cache->flags & FLC_PREVIEWS_ACTIVE);
+
+  if (entry->preview_icon_id) {
+    return false;
+  }
+
+  if (!filelist_file_preview_load_poll(entry)) {
+    return false;
   }
 
   FileListInternEntry *intern_entry = filelist->filelist_intern.filtered[index];
   PreviewImage *preview_in_memory = intern_entry->local_data.preview_image;
   if (preview_in_memory && !BKE_previewimg_is_finished(preview_in_memory, ICON_SIZE_PREVIEW)) {
     /* Nothing to set yet. Wait for next call. */
-    return;
+    return false;
   }
 
   filelist_cache_preview_ensure_running(cache);
@@ -1719,6 +1720,8 @@ static void filelist_cache_previews_push(FileList *filelist, FileDirEntry *entry
                        filelist_cache_preview_freef);
   }
   cache->previews_todo_count++;
+
+  return true;
 }
 
 static void filelist_cache_init(FileListEntryCache *cache, size_t cache_size)
@@ -2798,7 +2801,7 @@ int ED_path_extension_type(const char *path)
     return FILE_TYPE_IMAGE;
   }
   if (BLI_path_extension_check(path, ".ogg")) {
-    if (IMB_isanim(path)) {
+    if (MOV_is_movie_file(path)) {
       return FILE_TYPE_MOVIE;
     }
     return FILE_TYPE_SOUND;
@@ -3579,7 +3582,7 @@ static void filelist_readjob_main_recursive(Main *bmain, FileList *filelist)
 #  endif
           //                  files->entry->nr = totbl + 1;
           files->entry->poin = id;
-          fake = id->flag & LIB_FAKEUSER;
+          fake = id->flag & ID_FLAG_FAKEUSER;
           if (ELEM(idcode, ID_MA, ID_TE, ID_LA, ID_WO, ID_IM)) {
             files->typeflag |= FILE_TYPE_IMAGE;
           }
@@ -3726,7 +3729,7 @@ static void filelist_readjob_recursive_dir_add_items(const bool do_lib,
 
     BLI_stack_discard(todo_dirs);
 
-    /* ARRRG! We have to be very careful *not to use* common BLI_path_util helpers over
+    /* ARRRG! We have to be very careful *not to use* common `BLI_path_utils.hh` helpers over
      * entry->relpath itself (nor any path containing it), since it may actually be a datablock
      * name inside .blend file, which can have slashes and backslashes! See #46827.
      * Note that in the end, this means we 'cache' valid relative subdir once here,
@@ -4149,9 +4152,8 @@ static void filelist_readjob_update(void *flrjv)
   }
 
   /* Important for partial reads: Copy increased UID counter back to the real list. */
-  if (flrj->tmp_filelist->filelist_intern.curr_uid > fl_intern->curr_uid) {
-    fl_intern->curr_uid = flrj->tmp_filelist->filelist_intern.curr_uid;
-  }
+  fl_intern->curr_uid = std::max(flrj->tmp_filelist->filelist_intern.curr_uid,
+                                 fl_intern->curr_uid);
 
   BLI_mutex_unlock(&flrj->lock);
 

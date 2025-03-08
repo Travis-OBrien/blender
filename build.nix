@@ -1,14 +1,7 @@
-# when using nix-build for building a derivation
-#nix-build --out-link /mnt/hdd/my-blender build.nix
-
-# when using nix-shell
-### compile process
-# nix-shell
-# runPhase configurePhase
-# runPhase buildPhase
-# runPhase installPhase
-# blender can be found within:
-# /tmp/blender-test/mnt/hdd/git/blender/fork/build/bin
+# --- compile blender ---
+# cd into blender directory which contains build.nix
+# then call the command below
+# nix-build build.nix
 
 # official instructions from blender.org
 # mkdir git/blender/build
@@ -63,21 +56,26 @@ in
 #stdenv.mkDerivation
 #mkShell
 stdenv.mkDerivation rec {
+  asdftest = numpy';
+  asdftestsite = numpy'.sitePackages;
   pname = "my-blender";
   version = "0.0.1";
   bversion = "4.4";
   src = ./.;
-  
+  phases = [ "unpackPhase" "configurePhase" "buildPhase" "installPhase" "postInstall" "fixupPhase" ];
+  #unpackPhase = "true";
   cmakeFlags = [
     #"-DCMAKE_INSTALL_PREFIX=$out"
     "-DCMAKE_BINARY_DIR=$(pwd)"
     "-DCMAKE_SOURCE_DIR=../blender"
-    #"-DCMAKE_INSTALL_BINDIR=$out/bin"  # This tells CMake where to install binaries
+    "-DCMAKE_INSTALL_BINDIR=$out/bin"  # This tells CMake where to install binaries
     
     "-DPYTHON_NUMPY_INCLUDE_DIRS=${numpy'}/${numpy'.sitePackages}/numpy/core/include"
     "-DPYTHON_NUMPY_PATH=${numpy'}/${numpy'.sitePackages}"
     "-DPYTHON_VERSION=${pythonVersion}"
 
+    #"-DWITH_PYTHON=ON"
+    
     "-DWITH_PYTHON_INSTALL=OFF"
     "-DWITH_PYTHON_INSTALL_NUMPY=OFF"
     "-DWITH_PYTHON_INSTALL_REQUESTS=OFF"
@@ -98,7 +96,8 @@ stdenv.mkDerivation rec {
     #"-DPYTHON_NUMPY'_PATH=${python3Packages.numpy'}"
   ];
   configurePhase = ''
-    export PYTHONPATH=${numpy'}/lib/python${pythonVersion}/${numpy'.sitePackages}:$PYTHONPATH
+    #export PYTHONPATH=${numpy'}/lib/python${pythonVersion}/${numpy'.sitePackages}:$PYTHONPATH
+    export PYTHONPATH=${numpy'}/${numpy'.sitePackages}:$PYTHONPATH
     export PYTHON_LIBRARY=${numpy'}/lib/libpython${pythonVersion}.so
     export PYTHON_INCLUDE_DIR=${numpy'}/include/python${pythonVersion}
 
@@ -119,7 +118,7 @@ stdenv.mkDerivation rec {
     # relative example: tmp/kek
     # ---
     # use this line for mkShell
-    #cmake ../blender -DCMAKE_INSTALL_PREFIX=/tmp/smek/bin $cmakeFlags
+    #cmake ../blender -DCMAKE_INSTALL_PREFIX=/tmp/blender-test/bin $cmakeFlags
     # use this line for mkDerivation
     cmake ../blender -DCMAKE_INSTALL_PREFIX=$out/bin $cmakeFlags
   '';
@@ -145,17 +144,33 @@ stdenv.mkDerivation rec {
   #   '';
 
   
+  postInstall = ''
+    ##mkdir -p $out/lib/python${pkgs.python3.version}/site-packages
+    ##ln -s ${numpy'}/lib/python${pkgs.python3.version}/site-packages/* $out/lib/python${pkgs.python3.version}/site-packages/
+    wrapProgram $out/bin/blender \
+    --prefix PYTHONPATH : "${numpy'}/${numpy'.sitePackages}" \
+    --add-flags '--python-use-system-env'
+  '';
   
   #export PYTHONPATH=${lib.makeSearchPath python.sitePackages [python311Packages.numpy']}:$PYTHONPATH
-  blenderExecutable = placeholder "out" + "/bin/blender";
-  postInstall = ''
-      echo "+++++ POST INSTALL +++++"
-      #mv $out/share/blender/${bversion}/python{,-ext}
-      wrapProgram $blenderExecutable \
-        --prefix PATH : $program_PATH \
-        --prefix PYTHONPATH : "${lib.makeSearchPath numpy'.sitePackages [numpy']}" \
-        --add-flags '--python-use-system-env'
-    '';
+  #blenderExecutable = placeholder "out" + "/bin/blender";
+  #blenderExecutable = "/tmp/my-blender-wrapped/bin/blender";
+  #blenderExecutable = "out" + "/bin/blender";
+  #"${lib.makeSearchPath numpy'.sitePackages [numpy']}"
+  #"${lib.makeSearchPathOutput "sitePackages" [numpy']}"
+  # postInstall = ''
+  #     # debug
+  #     #set -x
+  #     echo "+++++ POST INSTALL +++++" > build-nix-post-install.txt
+  #     #echo $blenderExecutable
+  #     #mv $out/share/blender/${bversion}/python{,-ext}
+  #     #$blenderExecutable
+  #     wrapProgram $out/bin/blender \
+  #       --prefix PATH : $program_PATH \
+  #       --prefix PYTHONPATH : "$program_PYTHONPATH":${lib.makeSearchPath numpy'.sitePackages [numpy']} \
+  #       --add-flags '--python-use-system-env'
+  #   '';
+  
   
   # postInstall =
   # ''
